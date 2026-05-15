@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\ChainType;
 use App\Models\Token;
+use App\Services\Crypto\BlockchainNodeService;
 use App\Services\Crypto\ExplorerService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -13,7 +14,6 @@ class FetchTokenPricesJob implements ShouldQueue
 {
     use Queueable;
 
-    public string $queue = 'default';
     public int $tries = 3;
 
     public array $backoff = [30, 60, 120];
@@ -25,14 +25,15 @@ class FetchTokenPricesJob implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(ExplorerService $explorer): void
+    public function handle(BlockchainNodeService $node): void
     {
         $nativeChains = [ChainType::ETH, ChainType::BNB, ChainType::POLYGON];
         $updated = 0;
 
         foreach ($nativeChains as $chain) {
             try {
-                $price = $explorer->getNativeTokenPriceUsd($chain);
+                // Fetch native price (ETH/BNB/MATIC) via node_api_base
+                $price = $node->getNativePrice($chain);
 
                 if ($price === null) {
                     continue;
@@ -52,16 +53,43 @@ class FetchTokenPricesJob implements ShouldQueue
                 ]);
                 $updated++;
             } catch (\Throwable $e) {
-                Log::warning('FetchTokenPricesJob: explorer price refresh failed', [
+                Log::warning('FetchTokenPricesJob: node price refresh failed', [
                     'chain' => $chain->value,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
 
-        Log::info('FetchTokenPricesJob: explorer native prices updated', [
+        // Also fetch prices for tokens with coingecko_id
+        $erc20Tokens = Token::whereNotNull('coingecko_id')
+            ->whereNotNull('contract_address')
+            ->where('enabled', true)
+            ->get();
+
+        if ($erc20Tokens->isNotEmpty()) {
+            try {
+                $ids = $erc20Tokens->pluck('coingecko_id')->unique()->all();
+                $prices = $node->getPrices($ids);
+
+                /** @var Token $token */
+                foreach ($erc20Tokens as $token) {
+                    if (isset($prices[$token->coingecko_id])) {
+                        $token->update([
+                            'current_price_usd' => $prices[$token->coingecko_id],
+                            'price_updated_at' => now(),
+                        ]);
+                        $updated++;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('FetchTokenPricesJob: ERC-20 price refresh failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        Log::info('FetchTokenPricesJob: token prices updated via node_api_base', [
             'updated_tokens' => $updated,
-            'note' => 'ERC-20 prices are resolved live from explorer address holdings during portfolio sync.',
         ]);
     }
 

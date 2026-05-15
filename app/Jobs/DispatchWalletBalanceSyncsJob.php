@@ -16,7 +16,9 @@ class DispatchWalletBalanceSyncsJob implements ShouldQueue, ShouldBeUnique
 {
     use Queueable;
 
-    public string $queue = 'low';
+    public function __construct() {
+        $this->onQueue('low');
+}
     public int $tries = 1;
 
     public int $uniqueFor = 300;

@@ -13,7 +13,9 @@ class SyncIncomingTransactionsJob implements ShouldQueue, ShouldBeUnique
 {
     use Queueable;
 
-    public string $queue = 'low';
+    public function __construct() {
+        $this->onQueue('critical');
+    }
     public int $tries = 3;
 
     public int $timeout = 300;
@@ -23,6 +25,7 @@ class SyncIncomingTransactionsJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(DepositDetectionService $detector): void
     {
+        /** @var \Illuminate\Database\Eloquent\Collection<int, \App\Models\Wallet> $wallets */
         $wallets = Wallet::active()->get();
 
         $scanned = 0;

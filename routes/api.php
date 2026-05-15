@@ -37,6 +37,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/', [ProfileController::class, 'show']);
             Route::put('/', [ProfileController::class, 'update']);
             Route::patch('change-password', [ProfileController::class, 'changePassword']);
+            Route::get('internal-recipients', [ProfileController::class, 'internalRecipients']);
         });
 
         Route::prefix('wallets')->group(function (): void {

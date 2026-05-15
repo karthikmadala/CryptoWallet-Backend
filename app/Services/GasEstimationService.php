@@ -243,7 +243,7 @@ class GasEstimationService
 
     private function estimateCostInUsd(string $costInWei, ChainType $chain): string
     {
-        $nativeUsd = $this->explorerService->getNativeTokenPriceUsd($chain);
+        $nativeUsd = $this->node->getNativePrice($chain);
 
         if ($nativeUsd === null || $nativeUsd <= 0) {
             return '0';

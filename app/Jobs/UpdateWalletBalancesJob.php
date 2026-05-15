@@ -17,26 +17,16 @@ class UpdateWalletBalancesJob implements ShouldQueue
      * PortfolioService::syncWallet() is exception-safe, so retries only occur
      * when the job itself throws (e.g. DB unavailable, DI resolution failure).
      */
-    public string $queue = 'low';
-    public int $tries = 3;
-
-    /**
-     * Exponential back-off in seconds between retries: 60s, 300s, 900s.
-     *
-     * @var array<int, int>
-     */
-    public array $backoff = [60, 300, 900];
-
-    /**
-     * Unique lock TTL — prevents duplicate syncs for the same wallet from
-     * stacking up in the queue when a previous job is still processing.
-     */
-    public int $uniqueFor = 300;
-
     public function __construct(private readonly Wallet $wallet)
     {
         $this->onQueue('default');
     }
+
+    public int $tries = 3;
+
+    public array $backoff = [60, 300, 900];
+
+    public int $uniqueFor = 300;
 
     public function handle(PortfolioService $portfolioService): void
     {

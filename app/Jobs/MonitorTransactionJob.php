@@ -12,14 +12,15 @@ use Illuminate\Support\Facades\Log;
 class MonitorTransactionJob implements ShouldQueue
 {
     use Queueable;
-
-    public string $queue = 'critical';
     public int $tries = 3;
     public int $timeout = 120;
 
     public function __construct(
         public readonly string $transactionId,
-    ) {}
+    ) {
+        $this->onQueue('critical');
+
+    }
 
     public function handle(TransactionMonitorService $monitorService): void
     {

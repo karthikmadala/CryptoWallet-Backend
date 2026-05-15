@@ -15,7 +15,7 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id')->nullable()->index();
             $table->foreign('user_id')->references('id')->on('users')->nullOnDelete();
             $table->timestamp('expires_at')->index();
-            $table->timestamp('used_at');
+            $table->timestamp('used_at')->nullable();
             $table->timestamps();
             $table->unique(['nonce', 'user_address'], 'ico_nonces_nonce_address_unique');
         });
