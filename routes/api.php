@@ -121,7 +121,7 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ── ICO Phase 2 — multi-sale launchpad ───────────────────────────────
-        Route::prefix('ico')->group(function (): void {
+        Route::prefix('ico')->middleware(\App\Http\Middleware\EnsureVerifiedUser::class)->group(function (): void {
             Route::get('tokens', [IcoSaleController::class, 'tokens']);
             Route::get('tokens/{tokenId}/sale', [IcoSaleController::class, 'activeSale']);
             Route::get('sales/{saleId}', [IcoSaleController::class, 'show']);
