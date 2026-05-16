@@ -13,14 +13,15 @@ class AuthService
     {
         $user = DB::transaction(function () use ($data): User {
             return User::create([
-                'name' => $data['name'],
-                'email' => strtolower($data['email']),
-                'password' => Hash::make($data['password']),
-                'role' => 'user',
+                'name'           => $data['name'],
+                'email'          => strtolower($data['email']),
+                'password'       => Hash::make($data['password']),
+                'role'           => 'user',
+                'account_status' => \App\Enums\Auth\AccountStatus::PendingVerification->value,
             ]);
         });
 
-        return $this->issueToken($user, $data['device_name'] ?? 'api-token');
+        return ['user' => $user, 'requires_otp' => true];
     }
 
     public function login(array $data): array

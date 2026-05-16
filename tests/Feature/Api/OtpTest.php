@@ -171,4 +171,52 @@ class OtpTest extends TestCase
             \Illuminate\Support\Facades\Hash::check('newpassword123', $user->fresh()->password)
         );
     }
+
+    public function test_register_returns_requires_otp_flag(): void
+    {
+        Mail::fake();
+
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name'                  => 'Test User',
+            'email'                 => 'newuser_otp@example.com',
+            'password'              => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ]);
+
+        $response->assertStatus(201)
+                 ->assertJsonPath('data.requires_otp', true)
+                 ->assertJsonPath('success', true)
+                 ->assertJsonStructure(['data' => ['user', 'requires_otp', 'email']]);
+    }
+
+    public function test_register_sets_account_pending(): void
+    {
+        Mail::fake();
+
+        $this->postJson('/api/v1/auth/register', [
+            'name'                  => 'Test User',
+            'email'                 => 'pending_user@example.com',
+            'password'              => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ])->assertStatus(201);
+
+        $this->assertDatabaseHas('users', [
+            'email'          => 'pending_user@example.com',
+            'account_status' => 'pending_verification',
+        ]);
+    }
+
+    public function test_register_queues_otp_email(): void
+    {
+        Mail::fake();
+
+        $this->postJson('/api/v1/auth/register', [
+            'name'                  => 'Test User',
+            'email'                 => 'queuetest@example.com',
+            'password'              => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ])->assertStatus(201);
+
+        Mail::assertQueued(\App\Mail\OtpMail::class);
+    }
 }

@@ -33,10 +33,17 @@ class AuthController extends Controller
     {
         $result = $this->authService->register($request->validated());
 
-        return api_response(true, 'Registration successful.', [
-            'user'             => new UserResource($result['user']),
-            'token'            => $result['token'],
-            'token_expires_at' => $result['token_expires_at'],
+        $this->otpService->generate(
+            $result['user'],
+            \App\Enums\Auth\OtpPurpose::Registration,
+            $request->ip(),
+            $request->userAgent()
+        );
+
+        return api_response(true, 'Registration successful. Check your email for a verification code.', [
+            'user'         => new UserResource($result['user']),
+            'requires_otp' => true,
+            'email'        => $result['user']->email,
         ], null, 201);
     }
 
