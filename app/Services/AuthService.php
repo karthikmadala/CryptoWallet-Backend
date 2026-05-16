@@ -21,6 +21,7 @@ class AuthService
             ]);
         });
 
+        event(new \App\Events\Auth\UserRegistered($user, request()->ip()));
         return ['user' => $user, 'requires_otp' => true];
     }
 
@@ -54,7 +55,9 @@ class AuthService
             'last_login_ip' => request()->ip(),
         ])->save();
 
-        return $this->issueToken($user, $data['device_name'] ?? 'api-token');
+        $result = $this->issueToken($user, $data['device_name'] ?? 'api-token');
+        event(new \App\Events\Auth\UserLoggedIn($user, request()->ip()));
+        return $result;
     }
 
     public function refresh(User $user): array
@@ -88,6 +91,7 @@ class AuthService
 
         $user->forceFill(['password' => Hash::make($newPassword)])->save();
         $user->tokens()->delete();
+        event(new \App\Events\Auth\PasswordChanged($user, request()->ip()));
     }
 
     /** Issue a token for an externally-authenticated user (e.g. MetaMask). */

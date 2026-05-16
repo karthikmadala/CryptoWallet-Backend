@@ -83,6 +83,11 @@ class AppServiceProvider extends ServiceProvider
 
         Event::listen(JobFailed::class, LogFailedJob::class);
 
+        Event::listen(\App\Events\Auth\UserRegistered::class, \App\Listeners\Auth\LogAuthEvent::class);
+        Event::listen(\App\Events\Auth\OtpVerified::class, \App\Listeners\Auth\LogAuthEvent::class);
+        Event::listen(\App\Events\Auth\UserLoggedIn::class, \App\Listeners\Auth\LogAuthEvent::class);
+        Event::listen(\App\Events\Auth\PasswordChanged::class, \App\Listeners\Auth\LogAuthEvent::class);
+
         if (! $this->app->isProduction() && class_exists(\Laravel\Telescope\TelescopeServiceProvider::class)) {
             $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
             $this->app->register(\App\Providers\TelescopeServiceProvider::class);

@@ -124,6 +124,8 @@ class AuthController extends Controller
                 'account_status'    => AccountStatus::Active->value,
             ])->save();
 
+            event(new \App\Events\Auth\OtpVerified($user, $purpose, $request->ip()));
+
             $result = $this->authService->issueTokenPublic($user, 'api-token');
 
             return api_response(true, 'Email verified. Welcome to CryptoVault!', [
