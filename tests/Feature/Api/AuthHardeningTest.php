@@ -84,4 +84,25 @@ class AuthHardeningTest extends TestCase
         $this->assertNotNull($user->last_login_at);
         $this->assertNotNull($user->last_login_ip);
     }
+
+    public function test_email_otp_model_can_be_created(): void
+    {
+        $user = \App\Models\User::factory()->create();
+        $otp = \App\Models\EmailOtp::create([
+            'user_id'    => $user->id,
+            'email'      => $user->email,
+            'otp_hash'   => 'testhash',
+            'otp_salt'   => 'testsalt',
+            'purpose'    => \App\Enums\Auth\OtpPurpose::Registration->value,
+            'expires_at' => now()->addMinutes(5),
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $this->assertNotNull($otp->id);
+        $this->assertFalse($otp->is_consumed);
+        $this->assertFalse($otp->isExpired());
+        $this->assertFalse($otp->isExhausted());
+        $this->assertTrue($otp->isValid());
+        $this->assertEquals(\App\Enums\Auth\OtpPurpose::Registration, $otp->purpose);
+    }
 }
