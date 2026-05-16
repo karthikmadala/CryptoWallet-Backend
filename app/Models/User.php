@@ -22,6 +22,9 @@ class User extends Authenticatable
         'menu_restrictions',
         'role_id',
         'encryption_salt',
+        'account_status',
+        'last_login_at',
+        'last_login_ip',
     ];
 
     protected $hidden = [
@@ -36,6 +39,8 @@ class User extends Authenticatable
             'password'           => 'hashed',
             'deleted_at'         => 'datetime',
             'menu_restrictions'  => 'array',
+            'account_status'     => \App\Enums\Auth\AccountStatus::class,
+            'last_login_at'      => 'datetime',
         ];
     }
 
@@ -122,5 +127,15 @@ class User extends Authenticatable
             }
         }
         return false;
+    }
+
+    public function isActive(): bool
+    {
+        return $this->account_status === \App\Enums\Auth\AccountStatus::Active;
+    }
+
+    public function isPendingVerification(): bool
+    {
+        return $this->account_status === \App\Enums\Auth\AccountStatus::PendingVerification;
     }
 }
