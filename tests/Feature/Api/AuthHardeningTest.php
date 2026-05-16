@@ -35,4 +35,10 @@ class AuthHardeningTest extends TestCase
         $this->assertTrue($user->isPendingVerification());
         $this->assertFalse($user->isActive());
     }
+
+    public function test_password_is_hashed_with_argon2id(): void
+    {
+        $hash = \Illuminate\Support\Facades\Hash::make('secret');
+        $this->assertStringStartsWith('$argon2id$', $hash);
+    }
 }
