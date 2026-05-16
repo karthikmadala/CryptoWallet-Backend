@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\V1\BlockchainController;
 use App\Http\Controllers\Api\V1\ChainInfoController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ICOController;
+use App\Http\Controllers\Api\V1\IcoAdminController;
+use App\Http\Controllers\Api\V1\IcoSaleController;
 use App\Http\Controllers\Api\V1\PortfolioController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\StakingController;
@@ -24,6 +26,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('login', [AuthController::class, 'login']);
             Route::post('metamask/nonce', [AuthController::class, 'metamaskNonce']);
             Route::post('metamask/verify', [AuthController::class, 'metamaskVerify']);
+            Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
+            Route::post('resend-otp', [AuthController::class, 'resendOtp']);
+            Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+            Route::post('reset-password', [AuthController::class, 'resetPassword']);
         });
 
         Route::middleware(['auth:sanctum', 'check.token.expiry', 'store.api.session'])->group(function (): void {
@@ -101,11 +107,24 @@ Route::prefix('v1')->group(function (): void {
             });
         });
 
-        // ── ICO (prepare for MetaMask signing) ───────────────────────────────
+        // ── ICO legacy (Phase 1 — preserved) ─────────────────────────────────
         Route::prefix('ico')->group(function (): void {
             Route::middleware('throttle:broadcast')->group(function (): void {
                 Route::post('buy/prepare', [ICOController::class, 'prepareBuyTokens']);
                 Route::post('buy', [ICOController::class, 'selfServiceBuyTokens']);
+                Route::post('purchase/confirm', [ICOController::class, 'confirmPurchase']);
+            });
+        });
+
+        // ── ICO Phase 2 — multi-sale launchpad ───────────────────────────────
+        Route::prefix('ico')->group(function (): void {
+            Route::get('tokens', [IcoSaleController::class, 'tokens']);
+            Route::get('tokens/{tokenId}/sale', [IcoSaleController::class, 'activeSale']);
+            Route::get('sales/{saleId}', [IcoSaleController::class, 'show']);
+            Route::get('purchases', [IcoSaleController::class, 'purchaseHistory']);
+
+            Route::middleware('throttle:broadcast')->group(function (): void {
+                Route::post('sales/{saleId}/prepare', [IcoSaleController::class, 'preparePurchase']);
             });
         });
 
@@ -140,9 +159,35 @@ Route::prefix('v1')->group(function (): void {
             // Admin staking (backend-signed, uses service wallet)
             Route::post('admin/staking/stake', [StakingController::class, 'executeStake']);
             Route::post('admin/staking/withdraw', [StakingController::class, 'executeWithdraw']);
-            // Admin ICO (backend-signed)
+            // Admin ICO legacy (Phase 1 — backend-signed)
             Route::post('admin/ico/sign', [ICOController::class, 'createSign']);
             Route::post('admin/ico/buy', [ICOController::class, 'executeBuyTokens']);
+
+            // Admin ICO Phase 2 — token + sale management
+            Route::prefix('admin/ico')->group(function (): void {
+                // Token CRUD
+                Route::get('tokens', [IcoAdminController::class, 'listTokens']);
+                Route::post('tokens', [IcoAdminController::class, 'createToken']);
+                Route::put('tokens/{icoToken}', [IcoAdminController::class, 'updateToken']);
+                Route::delete('tokens/{icoToken}', [IcoAdminController::class, 'deleteToken']);
+
+                // Sale CRUD + lifecycle
+                Route::get('sales', [IcoAdminController::class, 'listSales']);
+                Route::post('tokens/{icoToken}/sales', [IcoAdminController::class, 'createSale']);
+                Route::put('sales/{icoSale}', [IcoAdminController::class, 'updateSale']);
+                Route::patch('sales/{icoSale}/activate', [IcoAdminController::class, 'activateSale']);
+                Route::patch('sales/{icoSale}/pause', [IcoAdminController::class, 'pauseSale']);
+                Route::patch('sales/{icoSale}/end', [IcoAdminController::class, 'endSale']);
+
+                // Payment methods
+                Route::get('sales/{icoSale}/payment-methods', [IcoAdminController::class, 'listPaymentMethods']);
+                Route::post('sales/{icoSale}/payment-methods', [IcoAdminController::class, 'createPaymentMethod']);
+                Route::put('sales/{icoSale}/payment-methods/{methodId}', [IcoAdminController::class, 'updatePaymentMethod']);
+                Route::delete('sales/{icoSale}/payment-methods/{methodId}', [IcoAdminController::class, 'deletePaymentMethod']);
+
+                // Purchase monitoring
+                Route::get('purchases', [IcoAdminController::class, 'purchases']);
+            });
             // Admin analytics dashboard
             Route::get('admin/analytics', [AdminController::class, 'analytics'])
                 ->middleware('permission:admin.access');

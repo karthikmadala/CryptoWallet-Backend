@@ -112,4 +112,63 @@ class OtpTest extends TestCase
 
         $this->assertEquals(1, $count);
     }
+
+    public function test_verify_otp_endpoint_activates_account(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create([
+            'account_status'    => 'pending_verification',
+            'email_verified_at' => null,
+        ]);
+        $otp = app(OtpService::class)->generate($user, OtpPurpose::Registration, '127.0.0.1');
+
+        $this->postJson('/api/v1/auth/verify-otp', [
+            'email'   => $user->email,
+            'otp'     => $otp,
+            'purpose' => 'registration',
+        ])->assertOk()
+          ->assertJsonPath('data.token', fn($t) => ! empty($t));
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'account_status' => 'active']);
+    }
+
+    public function test_wrong_otp_returns_422(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create();
+        app(OtpService::class)->generate($user, OtpPurpose::Registration, '127.0.0.1');
+
+        $this->postJson('/api/v1/auth/verify-otp', [
+            'email'   => $user->email,
+            'otp'     => '000000',
+            'purpose' => 'registration',
+        ])->assertStatus(422);
+    }
+
+    public function test_forgot_password_always_returns_200(): void
+    {
+        $this->postJson('/api/v1/auth/forgot-password', [
+            'email' => 'admin@example.com',
+        ])->assertOk();
+    }
+
+    public function test_reset_password_with_valid_otp(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create([
+            'password' => \Illuminate\Support\Facades\Hash::make('oldpassword'),
+        ]);
+        $otp = app(OtpService::class)->generate($user, OtpPurpose::PasswordReset, '127.0.0.1');
+
+        $this->postJson('/api/v1/auth/reset-password', [
+            'email'                 => $user->email,
+            'otp'                   => $otp,
+            'password'              => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertOk();
+
+        $this->assertTrue(
+            \Illuminate\Support\Facades\Hash::check('newpassword123', $user->fresh()->password)
+        );
+    }
 }
