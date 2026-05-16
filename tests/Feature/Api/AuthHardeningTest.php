@@ -85,6 +85,22 @@ class AuthHardeningTest extends TestCase
         $this->assertNotNull($user->last_login_ip);
     }
 
+    public function test_social_account_can_be_created_and_linked(): void
+    {
+        $user = \App\Models\User::factory()->create();
+
+        $social = \App\Models\SocialAccount::create([
+            'user_id'          => $user->id,
+            'provider'         => 'google',
+            'provider_user_id' => '123456789',
+            'provider_email'   => $user->email,
+        ]);
+
+        $this->assertNotNull($social->id);
+        $this->assertEquals('google', $social->provider);
+        $this->assertCount(1, $user->socialAccounts);
+    }
+
     public function test_email_otp_model_can_be_created(): void
     {
         $user = \App\Models\User::factory()->create();
