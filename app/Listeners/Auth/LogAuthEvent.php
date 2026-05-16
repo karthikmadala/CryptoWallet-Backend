@@ -14,11 +14,13 @@ class LogAuthEvent
         $detail = property_exists($event, 'purpose') ? ['purpose' => $event->purpose?->value] : null;
 
         AdminAuditLog::create([
-            'actor_id'   => $user?->id,
-            'action'     => 'auth.' . Str::snake(class_basename($event)),
-            'ip_address' => $ip,
-            'new_values' => $detail,
-            'created_at' => now(),
+            'actor_id'    => $user?->id,
+            'entity_type' => 'user',
+            'entity_id'   => $user?->id,
+            'action'      => 'auth.' . Str::snake(class_basename($event)),
+            'ip_address'  => $ip,
+            'new_values'  => $detail,
+            'created_at'  => now(),
         ]);
     }
 }
