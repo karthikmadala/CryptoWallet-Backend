@@ -14,6 +14,7 @@ use App\Http\Requests\Auth\VerifyOtpRequest;
 use App\Http\Requests\Wallet\MetaMaskNonceRequest;
 use App\Http\Requests\Wallet\MetaMaskVerifyRequest;
 use App\Http\Resources\UserResource;
+use App\Services\Auth\GoogleAuthService;
 use App\Services\Auth\OtpService;
 use App\Services\AuthService;
 use App\Services\WalletService;
@@ -26,6 +27,7 @@ class AuthController extends Controller
         private readonly AuthService $authService,
         private readonly WalletService $walletService,
         private readonly OtpService $otpService,
+        private readonly GoogleAuthService $googleAuthService,
     ) {}
 
     /** POST /api/v1/auth/register */
@@ -182,5 +184,30 @@ class AuthController extends Controller
         $user->tokens()->delete();
 
         return api_response(true, 'Password reset successful. Please log in.');
+    }
+
+    /** GET /api/v1/auth/google/redirect */
+    public function googleRedirect(): JsonResponse
+    {
+        $url = $this->googleAuthService->getRedirectUrl();
+        return api_response(true, 'Google OAuth redirect URL.', ['redirect_url' => $url]);
+    }
+
+    /** GET /api/v1/auth/google/callback */
+    public function googleCallback(): JsonResponse
+    {
+        try {
+            $result = $this->googleAuthService->handleCallback();
+        } catch (\Throwable $e) {
+            return api_response(false, 'Google authentication failed.', null, null, 401);
+        }
+
+        $tokenResult = $this->authService->issueTokenPublic($result['user'], 'google');
+
+        return api_response(true, 'Google login successful.', [
+            'user'             => new UserResource($tokenResult['user']),
+            'token'            => $tokenResult['token'],
+            'token_expires_at' => $tokenResult['token_expires_at'],
+        ]);
     }
 }

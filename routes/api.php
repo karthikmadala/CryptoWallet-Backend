@@ -32,6 +32,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('reset-password', [AuthController::class, 'resetPassword']);
         });
 
+        Route::get('google/redirect', [AuthController::class, 'googleRedirect']);
+        Route::get('google/callback', [AuthController::class, 'googleCallback']);
+
         Route::middleware(['auth:sanctum', 'check.token.expiry', 'store.api.session'])->group(function (): void {
             Route::post('logout', [AuthController::class, 'logout']);
             Route::post('refresh', [AuthController::class, 'refresh']);
