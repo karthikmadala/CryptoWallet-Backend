@@ -26,11 +26,12 @@ Route::prefix('v1')->group(function (): void {
             Route::post('login', [AuthController::class, 'login']);
             Route::post('metamask/nonce', [AuthController::class, 'metamaskNonce']);
             Route::post('metamask/verify', [AuthController::class, 'metamaskVerify']);
-            Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
-            Route::post('resend-otp', [AuthController::class, 'resendOtp']);
-            Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
-            Route::post('reset-password', [AuthController::class, 'resetPassword']);
         });
+
+        Route::middleware('throttle:otp-verify')->post('verify-otp', [AuthController::class, 'verifyOtp']);
+        Route::middleware('throttle:otp-resend')->post('resend-otp', [AuthController::class, 'resendOtp']);
+        Route::middleware('throttle:forgot-password')->post('forgot-password', [AuthController::class, 'forgotPassword']);
+        Route::post('reset-password', [AuthController::class, 'resetPassword']);
 
         Route::get('google/redirect', [AuthController::class, 'googleRedirect']);
         Route::get('google/callback', [AuthController::class, 'googleCallback']);

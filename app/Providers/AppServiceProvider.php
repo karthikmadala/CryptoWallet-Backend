@@ -93,6 +93,21 @@ class AppServiceProvider extends ServiceProvider
             $this->app->register(\App\Providers\TelescopeServiceProvider::class);
         }
 
+        RateLimiter::for('otp-verify', function (Request $request) {
+            return Limit::perMinutes(15, 5)
+                ->by($request->input('email', '') . '|' . $request->ip());
+        });
+
+        RateLimiter::for('otp-resend', function (Request $request) {
+            return Limit::perMinutes(15, 3)
+                ->by($request->input('email', '') . '|' . $request->ip());
+        });
+
+        RateLimiter::for('forgot-password', function (Request $request) {
+            return Limit::perHour(3)
+                ->by($request->input('email', '') . '|' . $request->ip());
+        });
+
         RateLimiter::for('auth', function (Request $request) {
             return Limit::perMinute(10)->by(
                 strtolower((string) ($request->input('email') ?: $request->input('address') ?: $request->ip()))
