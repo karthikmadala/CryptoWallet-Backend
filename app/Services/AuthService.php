@@ -35,6 +35,24 @@ class AuthService
             ]);
         }
 
+        $status = $user->account_status ?? \App\Enums\Auth\AccountStatus::Active;
+
+        if ($status === \App\Enums\Auth\AccountStatus::Suspended || $status === \App\Enums\Auth\AccountStatus::Locked) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                response()->json([
+                    'success' => false,
+                    'message' => 'Account is ' . $status->value . '. Contact support.',
+                    'data'    => null,
+                    'errors'  => null,
+                ], 403)
+            );
+        }
+
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => request()->ip(),
+        ])->save();
+
         return $this->issueToken($user, $data['device_name'] ?? 'api-token');
     }
 

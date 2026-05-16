@@ -41,4 +41,47 @@ class AuthHardeningTest extends TestCase
         $hash = \Illuminate\Support\Facades\Hash::make('secret');
         $this->assertStringStartsWith('$argon2id$', $hash);
     }
+
+    public function test_suspended_user_cannot_login(): void
+    {
+        $user = \App\Models\User::factory()->create([
+            'password'       => \Illuminate\Support\Facades\Hash::make('password'),
+            'account_status' => 'suspended',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email'    => $user->email,
+            'password' => 'password',
+        ])->assertStatus(403);
+    }
+
+    public function test_locked_user_cannot_login(): void
+    {
+        $user = \App\Models\User::factory()->create([
+            'password'       => \Illuminate\Support\Facades\Hash::make('password'),
+            'account_status' => 'locked',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email'    => $user->email,
+            'password' => 'password',
+        ])->assertStatus(403);
+    }
+
+    public function test_login_updates_last_login_fields(): void
+    {
+        $user = \App\Models\User::factory()->create([
+            'password'       => \Illuminate\Support\Facades\Hash::make('password'),
+            'account_status' => 'active',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email'    => $user->email,
+            'password' => 'password',
+        ])->assertOk();
+
+        $user->refresh();
+        $this->assertNotNull($user->last_login_at);
+        $this->assertNotNull($user->last_login_ip);
+    }
 }
