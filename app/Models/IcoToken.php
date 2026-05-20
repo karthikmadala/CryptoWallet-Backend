@@ -23,16 +23,26 @@ class IcoToken extends Model
         'total_supply',
         'description',
         'logo_url',
+        'logo_path',
+        'logo_original_name',
+        'logo_mime_type',
+        'logo_size',
+        'whitepaper_path',
+        'whitepaper_original_name',
+        'whitepaper_mime_type',
+        'whitepaper_size',
         'is_active',
     ];
 
     protected function casts(): array
     {
         return [
-            'chain_type'   => ChainType::class,
-            'total_supply' => 'decimal:18',
-            'is_active'    => 'boolean',
-            'decimals'     => 'integer',
+            'chain_type'      => ChainType::class,
+            'total_supply'    => 'decimal:18',
+            'is_active'       => 'boolean',
+            'decimals'        => 'integer',
+            'logo_size'       => 'integer',
+            'whitepaper_size' => 'integer',
         ];
     }
 
