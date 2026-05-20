@@ -3,21 +3,21 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Services\Crypto\BlockchainNodeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 
 class HealthController extends Controller
 {
     public function show(): JsonResponse
     {
         $checks = [
-            'database' => $this->checkDatabase(),
-            'cache' => $this->checkCache(),
-            'queue' => [
-                'status' => 'ok',
-                'connection' => config('queue.default'),
-            ],
+            'database'     => $this->checkDatabase(),
+            'cache'        => $this->checkCache(),
+            'queue'        => $this->checkQueue(),
+            'node_service' => $this->checkNodeService(),
         ];
 
         $healthy = collect($checks)->every(
@@ -40,6 +40,30 @@ class HealthController extends Controller
     public function admin(): JsonResponse
     {
         return api_response(true, 'Admin route accessible.');
+    }
+
+    private function checkQueue(): array
+    {
+        try {
+            $size = Queue::size('default');
+            return ['status' => 'ok', 'connection' => config('queue.default'), 'depth' => $size];
+        } catch (\Throwable $e) {
+            return ['status' => 'failed', 'connection' => config('queue.default')];
+        }
+    }
+
+    private function checkNodeService(): array
+    {
+        $url = config('crypto.node_service.url');
+        if (! $url) {
+            return ['status' => 'unconfigured'];
+        }
+        try {
+            app(BlockchainNodeService::class)->getNativePrice(\App\Enums\ChainType::ETH);
+            return ['status' => 'ok', 'url' => $url];
+        } catch (\Throwable) {
+            return ['status' => 'degraded', 'url' => $url];
+        }
     }
 
     private function checkDatabase(): array

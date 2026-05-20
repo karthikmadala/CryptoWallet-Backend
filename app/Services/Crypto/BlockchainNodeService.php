@@ -241,15 +241,22 @@ class BlockchainNodeService
         int $paymentIndex,
         string $amount,
         array $signature,
+        ?string $contractAddress = null,
     ): string {
-        $response = $this->post('/buyTokens', [
+        $body = [
             'chain'         => $this->nodeChain($chain),
             'key'           => $key,
             'address'       => $beneficiary,
             'paymentindex'  => $paymentIndex,
             'amount'        => $amount,
             'signature'     => $signature,
-        ]);
+        ];
+
+        if ($contractAddress !== null) {
+            $body['contract_address'] = $contractAddress;
+        }
+
+        $response = $this->post('/buyTokens', $body);
 
         return $response['txHash'];
     }
@@ -440,7 +447,8 @@ class BlockchainNodeService
             $response = $this->get('/native-price/' . $this->nodeChain($chain), []);
             $price = $response['price_usd'] ?? null;
             return $price !== null ? (float) $price : null;
-        } catch (BlockchainException) {
+        } catch (BlockchainException $e) {
+            \Log::error('BlockchainException: ' . $e->getMessage());
             return null;
         }
     }

@@ -4,6 +4,7 @@ use App\Jobs\DispatchWalletBalanceSyncsJob;
 use App\Jobs\FetchTokenPricesJob;
 use App\Jobs\MonitorPendingTransactionsJob;
 use App\Jobs\SyncIncomingTransactionsJob;
+use App\Jobs\TrackPendingIcoPurchasesJob;
 use App\Models\Transaction;
 use App\Models\Wallet;
 use Illuminate\Support\Facades\Artisan;
@@ -40,6 +41,13 @@ Schedule::job(new FetchTokenPricesJob)
 Schedule::call(function () {
     \App\Models\IcoUsedNonce::pruneExpired();
 })->hourly()->name('ico:prune-nonces')->withoutOverlapping();
+
+// ICO purchase confirmation recovery — re-dispatch stuck purchases every 5 minutes.
+Schedule::job(new TrackPendingIcoPurchasesJob)
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('track-pending-ico-purchases');
 
 Artisan::command('transactions:cleanup-recipient-mirrors', function () {
     $deleted = 0;

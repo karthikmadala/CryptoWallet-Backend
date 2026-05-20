@@ -184,7 +184,7 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
         $totalUsd   = '0';
         $lastSynced = null;
         $balances = $wallet->balances
-            ->filter(fn(WalletBalance $wb) => bccomp((string) $wb->balance, '0', 18) > 0 && $wb->token->enabled)
+            ->filter(fn(WalletBalance $wb) => (bccomp((string) $wb->balance, '0', 18) > 0 || $wb->token->isNative()) && $wb->token->enabled)
             ->sortByDesc(fn(WalletBalance $wb) => (float) ($wb->balance_usd ?? '0'))
             ->map(function (WalletBalance $wb) use (&$totalUsd, &$lastSynced): array {
                 $price = $this->resolveWalletBalancePriceUsd($wb);

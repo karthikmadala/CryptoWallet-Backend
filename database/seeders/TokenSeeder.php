@@ -12,12 +12,20 @@ class TokenSeeder extends Seeder
     {
         $isTestnet = app()->environment('local');
 
+        // Chain IDs: testnet (local) vs mainnet
+        $chainIds = [
+            'eth'     => $isTestnet ? 11155111 : 1,   // Sepolia / Mainnet
+            'bnb'     => $isTestnet ? 97       : 56,  // BSC Testnet / Mainnet
+            'polygon' => $isTestnet ? 80002    : 137, // Amoy / Mainnet
+        ];
+
         $tokens = [
             // Native ETH
             [
                 'symbol'           => 'ETH',
                 'name'             => 'Ethereum',
                 'chain_type'       => 'eth',
+                'chain_id'         => $chainIds['eth'],
                 'coingecko_id'     => 'ethereum',
                 'contract_address' => null,
                 'decimals'         => 18,
@@ -27,6 +35,7 @@ class TokenSeeder extends Seeder
                 'symbol'           => 'BNB',
                 'name'             => 'BNB',
                 'chain_type'       => 'bnb',
+                'chain_id'         => $chainIds['bnb'],
                 'coingecko_id'     => 'binancecoin',
                 'contract_address' => null,
                 'decimals'         => 18,
@@ -36,6 +45,7 @@ class TokenSeeder extends Seeder
                 'symbol'           => 'MATIC',
                 'name'             => 'Polygon',
                 'chain_type'       => 'polygon',
+                'chain_id'         => $chainIds['polygon'],
                 'coingecko_id'     => 'matic-network',
                 'contract_address' => null,
                 'decimals'         => 18,
@@ -45,6 +55,7 @@ class TokenSeeder extends Seeder
                 'symbol'           => 'BTC',
                 'name'             => 'Bitcoin',
                 'chain_type'       => 'btc',
+                'chain_id'         => null,
                 'coingecko_id'     => 'bitcoin',
                 'contract_address' => null,
                 'decimals'         => 8,
@@ -94,10 +105,15 @@ class TokenSeeder extends Seeder
         ];
 
         foreach ($tokens as $token) {
-            Token::firstOrCreate(
+            $existing = Token::firstOrCreate(
                 ['symbol' => $token['symbol'], 'chain_type' => $token['chain_type']],
                 array_merge($token, ['id' => Str::uuid()])
             );
+
+            // Update chain_id on existing native tokens that were seeded without it
+            if ($existing->wasRecentlyCreated === false && isset($token['chain_id']) && $existing->chain_id !== $token['chain_id']) {
+                $existing->update(['chain_id' => $token['chain_id']]);
+            }
         }
     }
 }

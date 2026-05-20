@@ -102,6 +102,8 @@ class WalletController extends Controller
             $request->validated('signature')
         );
 
+        $this->portfolioService->syncWallet($wallet);
+
         return api_response(true, 'MetaMask wallet linked successfully.', [
             'wallet' => new WalletResource($wallet),
         ]);

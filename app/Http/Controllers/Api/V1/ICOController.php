@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\ChainType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ICO\BuyTokensRequest;
+use App\Http\Requests\Api\V1\ICO\ConfirmPurchaseRequest;
 use App\Http\Requests\Api\V1\ICO\CreateSignRequest;
 use App\Http\Requests\Api\V1\ICO\SelfServiceBuyRequest;
+use App\Jobs\ConfirmIcoPurchaseJob;
 use App\Services\ICOService;
+use App\Services\IcoPurchaseService;
 
 /**
  * ICO contract endpoints.
@@ -20,6 +23,7 @@ class ICOController extends Controller
 {
     public function __construct(
         private readonly ICOService $ico,
+        private readonly IcoPurchaseService $icoPurchaseService,
     ) {}
 
     /**
@@ -99,5 +103,28 @@ class ICOController extends Controller
         );
 
         return api_response(true, 'Buy-tokens transaction submitted.', ['tx_hash' => $txHash]);
+    }
+
+    /**
+     * POST /ico/purchase/confirm  (authenticated user, throttle:broadcast)
+     * Record a submitted ICO purchase tx hash and start async confirmation monitoring.
+     * Idempotent — safe to call multiple times with same tx_hash.
+     */
+    public function confirmPurchase(ConfirmPurchaseRequest $request)
+    {
+        $purchase = $this->icoPurchaseService->submitForConfirmation(
+            auth()->user(),
+            $request->validated(),
+        );
+
+        // Dispatch outside DB transaction to avoid job running before commit
+        if (! $purchase->status->isTerminal() && $purchase->confirmation_attempts === 0) {
+            ConfirmIcoPurchaseJob::dispatch($purchase->id);
+        }
+
+        return api_response(true, 'Purchase submitted for confirmation.', [
+            'id'     => $purchase->id,
+            'status' => $purchase->status->value,
+        ]);
     }
 }

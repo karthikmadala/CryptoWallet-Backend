@@ -18,26 +18,23 @@ class CheckRole
             ], 401);
         }
 
-        // Super admin bypass
-        if ($user->role_id && $user->role && $user->role->is_super_admin) {
-            return $next($request);
-        }
-
-        // Legacy super_admin bypass
-        if ($user->role === 'super_admin') {
+        // Super admin bypass (uses isSuperAdmin which loads role relationship correctly)
+        if ($user->isSuperAdmin()) {
             return $next($request);
         }
 
         // Parse roles: comma-separated = ANY match
         $roleList = array_map('trim', explode(',', $roles));
 
+        $roleModel = $user->role_id ? $user->role()->first() : null;
+
         $hasRole = false;
         foreach ($roleList as $role) {
-            if ($user->role_id && $user->role && $user->role->name === $role) {
+            if ($roleModel && $roleModel->name === $role) {
                 $hasRole = true;
                 break;
             }
-            // Legacy role field check
+            // Legacy string role field check
             if ($user->role === $role) {
                 $hasRole = true;
                 break;

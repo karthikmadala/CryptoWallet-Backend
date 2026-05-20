@@ -37,7 +37,7 @@ class AuthController extends Controller
 
         $this->otpService->generate(
             $result['user'],
-            \App\Enums\Auth\OtpPurpose::Registration,
+            OtpPurpose::Registration,
             $request->ip(),
             $request->userAgent()
         );
@@ -192,24 +192,27 @@ class AuthController extends Controller
     public function googleRedirect(): JsonResponse
     {
         $url = $this->googleAuthService->getRedirectUrl();
+        info($url);
         return api_response(true, 'Google OAuth redirect URL.', ['redirect_url' => $url]);
     }
 
     /** GET /api/v1/auth/google/callback */
-    public function googleCallback(): JsonResponse
+    public function googleCallback(): \Illuminate\Http\RedirectResponse
     {
+        $frontendUrl = config('app.frontend_url', 'http://localhost:4200');
+
         try {
-            $result = $this->googleAuthService->handleCallback();
+            $result      = $this->googleAuthService->handleCallback();
+            $tokenResult = $this->authService->issueTokenPublic($result['user'], 'google');
+            $user        = new UserResource($tokenResult['user']);
+
+            return redirect($frontendUrl . '/auth/google/callback?' . http_build_query([
+                'token'      => $tokenResult['token'],
+                'expires_at' => $tokenResult['token_expires_at'],
+                'user'       => urlencode(json_encode($user)),
+            ]));
         } catch (\Throwable $e) {
-            return api_response(false, 'Google authentication failed.', null, null, 401);
+            return redirect($frontendUrl . '/auth/google/callback?error=' . urlencode('Google authentication failed.'));
         }
-
-        $tokenResult = $this->authService->issueTokenPublic($result['user'], 'google');
-
-        return api_response(true, 'Google login successful.', [
-            'user'             => new UserResource($tokenResult['user']),
-            'token'            => $tokenResult['token'],
-            'token_expires_at' => $tokenResult['token_expires_at'],
-        ]);
     }
 }
