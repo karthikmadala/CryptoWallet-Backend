@@ -9,14 +9,28 @@ use App\Exceptions\ICOException;
 use App\Models\IcoPaymentMethod;
 use App\Models\IcoSale;
 use App\Models\IcoToken;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SaleManagementService
 {
     // ── Token management ─────────────────────────────────────────────────────
 
-    public function createToken(array $data): IcoToken
+    public function createToken(array $data, ?Request $request = null): IcoToken
     {
+        $files    = app(\App\Services\FileUploadService::class);
+        $logoData = [];
+        $wpData   = [];
+
+        if ($request?->hasFile('logo')) {
+            $logoData = $files->storeLogo($request->file('logo'), null);
+            \App\Jobs\ProcessLogoUploadJob::dispatch($logoData['path']);
+        }
+
+        if ($request?->hasFile('whitepaper')) {
+            $wpData = $files->storeWhitepaper($request->file('whitepaper'), null);
+        }
+
         return IcoToken::create([
             'name'             => $data['name'],
             'symbol'           => strtoupper($data['symbol']),
@@ -26,13 +40,22 @@ class SaleManagementService
             'total_supply'     => $data['total_supply'] ?? '0',
             'description'      => $data['description'] ?? null,
             'logo_url'         => $data['logo_url'] ?? null,
+            'logo_path'             => $logoData['path'] ?? null,
+            'logo_original_name'    => $logoData['original_name'] ?? null,
+            'logo_mime_type'        => $logoData['mime_type'] ?? null,
+            'logo_size'             => $logoData['size'] ?? null,
+            'whitepaper_path'            => $wpData['path'] ?? null,
+            'whitepaper_original_name'   => $wpData['original_name'] ?? null,
+            'whitepaper_mime_type'       => $wpData['mime_type'] ?? null,
+            'whitepaper_size'            => $wpData['size'] ?? null,
             'is_active'        => $data['is_active'] ?? false,
         ]);
     }
 
-    public function updateToken(IcoToken $token, array $data): IcoToken
+    public function updateToken(IcoToken $token, array $data, ?Request $request = null): IcoToken
     {
-        $token->update(array_filter([
+        $files   = app(\App\Services\FileUploadService::class);
+        $updates = array_filter([
             'name'             => $data['name'] ?? null,
             'symbol'           => isset($data['symbol']) ? strtoupper($data['symbol']) : null,
             'decimals'         => $data['decimals'] ?? null,
@@ -42,7 +65,30 @@ class SaleManagementService
             'description'      => $data['description'] ?? null,
             'logo_url'         => $data['logo_url'] ?? null,
             'is_active'        => $data['is_active'] ?? null,
-        ], fn ($v) => $v !== null));
+        ], fn ($v) => $v !== null);
+
+        if ($request?->hasFile('logo')) {
+            $logoData = $files->storeLogo($request->file('logo'), $token->logo_path);
+            \App\Jobs\ProcessLogoUploadJob::dispatch($logoData['path']);
+            $updates = array_merge($updates, [
+                'logo_path'          => $logoData['path'],
+                'logo_original_name' => $logoData['original_name'],
+                'logo_mime_type'     => $logoData['mime_type'],
+                'logo_size'          => $logoData['size'],
+            ]);
+        }
+
+        if ($request?->hasFile('whitepaper')) {
+            $wpData  = $files->storeWhitepaper($request->file('whitepaper'), $token->whitepaper_path);
+            $updates = array_merge($updates, [
+                'whitepaper_path'          => $wpData['path'],
+                'whitepaper_original_name' => $wpData['original_name'],
+                'whitepaper_mime_type'     => $wpData['mime_type'],
+                'whitepaper_size'          => $wpData['size'],
+            ]);
+        }
+
+        $token->update($updates);
 
         return $token->fresh();
     }

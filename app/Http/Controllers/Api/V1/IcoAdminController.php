@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\IcoTokenResource;
+use App\Jobs\ProcessLogoUploadJob;
 use App\Models\IcoPurchase;
 use App\Models\IcoSale;
 use App\Models\IcoToken;
 use App\Services\AuditLogService;
+use App\Services\BrandingService;
+use App\Services\FileUploadService;
 use App\Services\ICO\SaleManagementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +19,9 @@ class IcoAdminController extends Controller
 {
     public function __construct(
         private readonly SaleManagementService $management,
-        private readonly AuditLogService        $audit,
+        private readonly AuditLogService       $audit,
+        private readonly FileUploadService     $files,
+        private readonly BrandingService       $branding,
     ) {}
 
     // ── Token CRUD ────────────────────────────────────────────────────────────
@@ -40,13 +46,31 @@ class IcoAdminController extends Controller
             'total_supply'     => 'nullable|numeric|gt:0',
             'description'      => 'nullable|string|max:2000',
             'logo_url'         => 'nullable|url|max:500',
-            'is_active'        => 'boolean',
+            'logo' => [
+                'nullable', 'image',
+                'mimetypes:image/jpeg,image/png,image/webp',
+                'max:2048',
+                'dimensions:min_width=100,min_height=100,max_width=4000,max_height=4000',
+            ],
+            'whitepaper' => [
+                'nullable', 'file',
+                'mimetypes:application/pdf,application/msword,' .
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' .
+                    'image/jpeg,image/png,image/webp',
+                'max:10240',
+            ],
+            'is_active' => 'boolean',
         ]);
 
-        $token = $this->management->createToken($data);
+        $token = $this->management->createToken($data, $request);
         $this->audit->log('ico_token', $token->id, 'created', [], $token->toArray());
 
-        return api_response(true, 'Token created.', ['token' => $this->formatToken($token)], null, 201);
+        $postSave = $this->handlePostSave($token);
+
+        return api_response(true, 'Token created.', array_merge(
+            ['token' => new IcoTokenResource($token->load('sales'))],
+            $postSave,
+        ), null, 201);
     }
 
     public function updateToken(Request $request, IcoToken $icoToken): JsonResponse
@@ -60,14 +84,32 @@ class IcoAdminController extends Controller
             'total_supply'     => 'nullable|numeric|gt:0',
             'description'      => 'nullable|string|max:2000',
             'logo_url'         => 'nullable|url|max:500',
-            'is_active'        => 'sometimes|boolean',
+            'logo' => [
+                'nullable', 'image',
+                'mimetypes:image/jpeg,image/png,image/webp',
+                'max:2048',
+                'dimensions:min_width=100,min_height=100,max_width=4000,max_height=4000',
+            ],
+            'whitepaper' => [
+                'nullable', 'file',
+                'mimetypes:application/pdf,application/msword,' .
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' .
+                    'image/jpeg,image/png,image/webp',
+                'max:10240',
+            ],
+            'is_active' => 'sometimes|boolean',
         ]);
 
         $before = $icoToken->toArray();
-        $token  = $this->management->updateToken($icoToken, $data);
+        $token  = $this->management->updateToken($icoToken, $data, $request);
         $this->audit->log('ico_token', $token->id, 'updated', $before, $token->toArray());
 
-        return api_response(true, 'Token updated.', ['token' => $this->formatToken($token)]);
+        $postSave = $this->handlePostSave($token);
+
+        return api_response(true, 'Token updated.', array_merge(
+            ['token' => new IcoTokenResource($token->load('sales'))],
+            $postSave,
+        ));
     }
 
     public function deleteToken(IcoToken $icoToken): JsonResponse
@@ -273,6 +315,21 @@ class IcoAdminController extends Controller
         ]);
     }
 
+    private function handlePostSave(IcoToken $token): array
+    {
+        $count = IcoToken::count();
+
+        if ($count === 1 && $token->logo_path) {
+            $this->branding->autoAssign($token);
+            return ['branding_auto_assigned' => true, 'branding_modal_required' => false];
+        }
+
+        return [
+            'branding_auto_assigned'  => false,
+            'branding_modal_required' => $count > 1 && (bool) $token->logo_path,
+        ];
+    }
+
     // ── Formatters ────────────────────────────────────────────────────────────
 
     private function formatToken(IcoToken $token): array
@@ -287,6 +344,11 @@ class IcoAdminController extends Controller
             'total_supply'     => $token->total_supply,
             'description'      => $token->description,
             'logo_url'         => $token->logo_url,
+            'logo_path'                => $token->logo_path ? asset('storage/' . $token->logo_path) : null,
+            'whitepaper_url'           => $token->whitepaper_path ? asset('storage/' . $token->whitepaper_path) : null,
+            'whitepaper_original_name' => $token->whitepaper_original_name,
+            'whitepaper_mime_type'     => $token->whitepaper_mime_type,
+            'whitepaper_size'          => $token->whitepaper_size,
             'is_active'        => $token->is_active,
             'sales_count'      => $token->sales->count(),
             'created_at'       => $token->created_at?->toIso8601String(),

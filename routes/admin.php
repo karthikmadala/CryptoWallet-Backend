@@ -87,3 +87,7 @@ Route::delete('admin/roles/{role}', [RoleController::class, 'destroy']);
 Route::get('admin/permissions', [RoleController::class, 'permissions']);
 Route::patch('admin/users/{userId}/role', [RoleController::class, 'assignRole']);
 Route::patch('admin/users/{userId}/status', [RoleController::class, 'updateStatus']);
+
+// Branding settings (admin)
+Route::get('admin/settings/branding',  [\App\Http\Controllers\Api\V1\AppBrandingController::class, 'adminShow']);
+Route::post('admin/settings/branding', [\App\Http\Controllers\Api\V1\AppBrandingController::class, 'adminSave']);
