@@ -10,54 +10,17 @@ class FileUploadService
 {
     public function storeLogo(UploadedFile $file, ?string $existing): array
     {
-        if ($existing) {
-            Storage::disk('public')->delete($existing);
-        }
-
-        $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-        $path     = $file->storeAs('ico/logos', $filename, 'public');
-
-        return [
-            'path'          => $path,
-            'original_name' => $file->getClientOriginalName(),
-            'mime_type'     => $file->getMimeType(),
-            'size'          => $file->getSize(),
-        ];
+        return $this->storeFile($file, 'ico/logos', $existing);
     }
 
     public function storeWhitepaper(UploadedFile $file, ?string $existing): array
     {
-        if ($existing) {
-            Storage::disk('public')->delete($existing);
-        }
-
-        $ext      = $file->getClientOriginalExtension();
-        $filename = Str::uuid() . '.' . $ext;
-        $path     = $file->storeAs('ico/whitepapers', $filename, 'public');
-
-        return [
-            'path'          => $path,
-            'original_name' => $file->getClientOriginalName(),
-            'mime_type'     => $file->getMimeType(),
-            'size'          => $file->getSize(),
-        ];
+        return $this->storeFile($file, 'ico/whitepapers', $existing);
     }
 
     public function storeCustomLogo(UploadedFile $file, ?string $existing): array
     {
-        if ($existing) {
-            Storage::disk('public')->delete($existing);
-        }
-
-        $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-        $path     = $file->storeAs('branding', $filename, 'public');
-
-        return [
-            'path'          => $path,
-            'original_name' => $file->getClientOriginalName(),
-            'mime_type'     => $file->getMimeType(),
-            'size'          => $file->getSize(),
-        ];
+        return $this->storeFile($file, 'branding', $existing);
     }
 
     public function delete(?string $path): void
@@ -65,5 +28,27 @@ class FileUploadService
         if ($path) {
             Storage::disk('public')->delete($path);
         }
+    }
+
+    private function storeFile(UploadedFile $file, string $directory, ?string $existing): array
+    {
+        $filename = Str::uuid() . '.' . ($file->guessExtension() ?? 'bin');
+        $path     = $file->storeAs($directory, $filename, 'public');
+
+        if ($path === false) {
+            throw new \RuntimeException("Failed to store file in {$directory}. Disk may be full or unwritable.");
+        }
+
+        // Delete old file only after new one is safely stored
+        if ($existing) {
+            Storage::disk('public')->delete($existing);
+        }
+
+        return [
+            'path'          => $path,
+            'original_name' => $file->getClientOriginalName(),
+            'mime_type'     => $file->getMimeType(),
+            'size'          => $file->getSize(),
+        ];
     }
 }
