@@ -192,7 +192,6 @@ class AuthController extends Controller
     public function googleRedirect(): JsonResponse
     {
         $url = $this->googleAuthService->getRedirectUrl();
-        info($url);
         return api_response(true, 'Google OAuth redirect URL.', ['redirect_url' => $url]);
     }
 
