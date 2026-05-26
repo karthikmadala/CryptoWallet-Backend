@@ -132,6 +132,32 @@ class SaleManagementService
             throw new ICOException("Sale cannot be activated from status: {$sale->status->value}");
         }
 
+        $sale->loadMissing('token');
+
+        if (! $sale->token) {
+            throw new ICOException('Sale has no associated token.');
+        }
+
+        if (! $sale->token->is_active) {
+            throw new ICOException('Token must be active before the sale can be activated. Enable the token in the Tokens tab first.');
+        }
+
+        $chainEnabled = \App\Models\Token::where('chain_type', $sale->chain_type->value)
+            ->where('enabled', true)
+            ->exists();
+
+        if (! $chainEnabled) {
+            throw new ICOException(
+                "The {$sale->chain_type->value} chain is not enabled. Go to Tokens settings and enable at least one {$sale->chain_type->value} token first."
+            );
+        }
+
+        if ($sale->chain_type->value !== $sale->token->chain_type->value) {
+            throw new ICOException(
+                "Sale chain ({$sale->chain_type->value}) does not match token chain ({$sale->token->chain_type->value})."
+            );
+        }
+
         // Only one active sale per token
         $hasActive = IcoSale::where('ico_token_id', $sale->ico_token_id)
             ->where('id', '!=', $sale->id)

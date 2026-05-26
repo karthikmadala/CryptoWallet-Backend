@@ -59,7 +59,7 @@ class IcoAdminController extends Controller
                     'image/jpeg,image/png,image/webp',
                 'max:10240',
             ],
-            'is_active' => 'boolean',
+            'is_active' => 'sometimes|boolean',
         ]);
 
         $token = $this->management->createToken($data, $request);
@@ -365,6 +365,11 @@ class IcoAdminController extends Controller
             'status'           => $sale->status->value,
             'contract_address' => $sale->contract_address,
             'chain'            => $sale->chain_type->value,
+            'token'            => $sale->token ? [
+                'id'     => $sale->token->id,
+                'name'   => $sale->token->name,
+                'symbol' => $sale->token->symbol,
+            ] : null,
             'token_price_usd'  => $sale->token_price_usd,
             'total_allocation' => $sale->total_allocation,
             'sold_amount'      => $sale->sold_amount,
