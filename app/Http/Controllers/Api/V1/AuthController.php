@@ -197,22 +197,20 @@ class AuthController extends Controller
     }
 
     /** GET /api/v1/auth/google/callback */
-    public function googleCallback(): \Illuminate\Http\RedirectResponse
+    public function googleCallback(): JsonResponse
     {
-        $frontendUrl = config('app.frontend_url', 'http://localhost:4200');
-
         try {
-            $result      = $this->googleAuthService->handleCallback();
-            $tokenResult = $this->authService->issueTokenPublic($result['user'], 'google');
-            $user        = new UserResource($tokenResult['user']);
-
-            return redirect($frontendUrl . '/auth/google/callback?' . http_build_query([
-                'token'      => $tokenResult['token'],
-                'expires_at' => $tokenResult['token_expires_at'],
-                'user'       => urlencode(json_encode($user)),
-            ]));
+            $result = $this->googleAuthService->handleCallback();
         } catch (\Throwable $e) {
-            return redirect($frontendUrl . '/auth/google/callback?error=' . urlencode('Google authentication failed.'));
+            return api_response(false, 'Google authentication failed.', null, null, 401);
         }
+
+        $tokenResult = $this->authService->issueTokenPublic($result['user'], 'google');
+
+        return api_response(true, 'Google login successful.', [
+            'user'             => new UserResource($tokenResult['user']),
+            'token'            => $tokenResult['token'],
+            'token_expires_at' => $tokenResult['token_expires_at'],
+        ]);
     }
 }
