@@ -77,7 +77,7 @@ class GoogleAuthService
 
     private function encrypt(string $plaintext): string
     {
-        $key    = sodium_crypto_generichash(config('app.key'), '', self::SODIUM_KEY_BYTES);
+        $key    = sodium_crypto_generichash(config('app.key'), 'google-oauth-token-encryption-v1', self::SODIUM_KEY_BYTES);
         $nonce  = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
         $cipher = sodium_crypto_secretbox($plaintext, $nonce, $key);
         sodium_memzero($key);

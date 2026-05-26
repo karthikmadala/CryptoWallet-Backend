@@ -173,7 +173,11 @@ class AuthController extends Controller
     /** POST /api/v1/auth/reset-password */
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
-        $user     = \App\Models\User::where('email', $request->validated('email'))->firstOrFail();
+        $user = \App\Models\User::where('email', $request->validated('email'))->first();
+
+        if (! $user) {
+            return api_response(false, 'Invalid or expired reset code.', null, null, 422);
+        }
         $verified = $this->otpService->verify($user, $request->validated('otp'), OtpPurpose::PasswordReset);
 
         if (! $verified) {

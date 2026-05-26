@@ -53,6 +53,7 @@ class OtpService
         $record = EmailOtp::where('user_id', $user->id)
             ->where('purpose', $purpose->value)
             ->where('is_consumed', false)
+            ->lockForUpdate()
             ->latest()
             ->first();
 
