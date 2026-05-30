@@ -163,12 +163,12 @@ class OtpTest extends TestCase
         $this->postJson('/api/v1/auth/reset-password', [
             'email'                 => $user->email,
             'otp'                   => $otp,
-            'password'              => 'newpassword123',
-            'password_confirmation' => 'newpassword123',
+            'password'              => 'NewPassword1!',
+            'password_confirmation' => 'NewPassword1!',
         ])->assertOk();
 
         $this->assertTrue(
-            \Illuminate\Support\Facades\Hash::check('newpassword123', $user->fresh()->password)
+            \Illuminate\Support\Facades\Hash::check('NewPassword1!', $user->fresh()->password)
         );
     }
 
