@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Enums\TransactionStatus;
+use App\Models\Role;
 use App\Models\Token;
 use App\Models\Transaction;
 use App\Models\User;
@@ -90,7 +91,8 @@ class SoftDeleteTest extends TestCase
 
     public function test_admin_can_restore_soft_deleted_token_by_recreating_same_symbol_and_chain(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $role  = Role::create(['name' => 'admin', 'label' => 'Admin', 'is_super_admin' => true]);
+        $admin = User::factory()->create(['role' => 'admin', 'role_id' => $role->id]);
         $token = Token::create([
             'symbol' => 'ETH',
             'name' => 'Ethereum',

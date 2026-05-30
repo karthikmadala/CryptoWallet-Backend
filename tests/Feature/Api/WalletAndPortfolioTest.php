@@ -28,7 +28,7 @@ class WalletAndPortfolioTest extends TestCase
         $response
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.wallets.0.id', $wallet->id);
+            ->assertJsonPath('data.wallets.0.wallet.id', $wallet->id);
     }
 
     public function test_portfolio_endpoint_returns_aggregated_balances(): void
