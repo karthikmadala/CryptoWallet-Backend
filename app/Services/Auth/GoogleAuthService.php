@@ -40,6 +40,7 @@ class GoogleAuthService
                 'email'             => strtolower($googleUser->getEmail()),
                 'password'          => Hash::make(Str::random(32)),
                 'role'              => 'user',
+                'auth_provider'     => 'google',
                 'account_status'    => AccountStatus::Active->value,
                 'email_verified_at' => now(),
             ]);
@@ -47,6 +48,7 @@ class GoogleAuthService
             $user->forceFill([
                 'email_verified_at' => now(),
                 'account_status'    => AccountStatus::Active->value,
+                'auth_provider'     => 'google',
             ])->save();
         }
 
