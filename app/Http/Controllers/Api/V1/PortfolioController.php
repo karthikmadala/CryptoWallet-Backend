@@ -23,8 +23,9 @@ class PortfolioController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $refresh   = filter_var($request->query('refresh', false), FILTER_VALIDATE_BOOLEAN);
-        $portfolio = $this->portfolioService->getPortfolio($request->user(), $refresh);
+        $refresh = filter_var($request->query('refresh', false), FILTER_VALIDATE_BOOLEAN);
+        $includeBalances = filter_var($request->query('include_balances', true), FILTER_VALIDATE_BOOLEAN);
+        $portfolio = $this->portfolioService->getPortfolio($request->user(), $refresh, $includeBalances);
 
         return api_response(true, 'Portfolio retrieved.', [
             'portfolio' => new PortfolioResource($portfolio),

@@ -218,40 +218,13 @@ class TransactionController extends Controller
             'tx_hash'      => 'required|string',
             'from_address' => 'required|string',
             'to_address'   => 'required|string',
-            'chain_type'   => 'required|string|in:eth,bnb,polygon',
+            'chain_type'   => 'required|string',
             'amount'       => 'required|string',
+            'token_address' => 'nullable|string',
         ]);
 
         try {
-            $wallet = \App\Models\Wallet::where('address', strtolower($data['from_address']))
-                ->where('chain_type', $data['chain_type'])
-                ->where('user_id', auth()->id())
-                ->first();
-
-            if (! $wallet && in_array($data['chain_type'], ['eth', 'bnb', 'polygon'], true)) {
-                $wallet = \App\Models\Wallet::where('address', strtolower($data['from_address']))
-                    ->where('user_id', auth()->id())
-                    ->whereIn('chain_type', ['eth', 'bnb', 'polygon'])
-                    ->where('is_active', true)
-                    ->first();
-            }
-
-            if (! $wallet) {
-                return api_response(false, 'Wallet not found', [], null, 404);
-            }
-
-            $transaction = \App\Models\Transaction::create([
-                'wallet_id'      => $wallet->id,
-                'user_id'        => auth()->id(),
-                'tx_hash'        => $data['tx_hash'],
-                'from_address'   => strtolower($data['from_address']),
-                'to_address'     => $data['to_address'],
-                'chain_type'     => $data['chain_type'],
-                'amount'         => $data['amount'],
-                'status'         => \App\Enums\TransactionStatus::SUBMITTED,
-                'signing_method' => 'client',
-                'submitted_at'   => now(),
-            ]);
+            $transaction = $this->transactionService->recordBroadcastTransaction($data, auth()->user());
 
             return api_response(true, 'Transaction recorded', [
                 'transaction' => new TransactionResource($transaction),

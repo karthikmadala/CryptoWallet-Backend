@@ -17,6 +17,7 @@ RUN apk add --no-cache \
         bcmath \
         gmp \
         intl \
+        pcntl \
         zip
 
 COPY . .
@@ -28,7 +29,7 @@ RUN composer install \
     --no-progress \
     --optimize-autoloader
 
-FROM node:22-alpine AS frontend
+FROM node:24-alpine AS frontend
 
 WORKDIR /app
 
@@ -44,7 +45,7 @@ RUN npm run build
 
 
 
-FROM php:8.2-fpm-alpine
+FROM php:8.4-fpm-alpine
 
 WORKDIR /var/www/html
 
@@ -63,6 +64,7 @@ RUN apk add --no-cache \
         gmp \
         intl \
         opcache \
+        pcntl \
         pdo_mysql \
         zip \
     && addgroup -g 1000 www \

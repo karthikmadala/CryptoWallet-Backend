@@ -14,6 +14,9 @@ class MonitorPendingTransactionsJob implements ShouldQueue, ShouldBeUnique
 {
     use Queueable;
 
+    public function __construct() {
+        $this->onQueue('critical');
+    }
     public int $tries = 3;
 
     public int $timeout = 180;
@@ -35,35 +38,35 @@ class MonitorPendingTransactionsJob implements ShouldQueue, ShouldBeUnique
         }
 
         $updated = 0;
-        $failed  = 0;
+        $failed = 0;
 
         foreach ($pending as $transaction) {
             try {
                 $before = $transaction->status;
-                $after  = $monitor->monitorTransaction($transaction);
+                $after = $monitor->monitorTransaction($transaction);
 
                 if ($after->status !== $before) {
                     $updated++;
                     Log::info('MonitorPendingTransactionsJob: status changed', [
                         'transaction_id' => $transaction->id,
-                        'tx_hash'        => $transaction->tx_hash,
-                        'from'           => $before->value,
-                        'to'             => $after->status->value,
+                        'tx_hash' => $transaction->tx_hash,
+                        'from' => $before->value,
+                        'to' => $after->status->value,
                     ]);
                 }
             } catch (\Throwable $e) {
                 $failed++;
                 Log::error('MonitorPendingTransactionsJob: failed to monitor transaction', [
                     'transaction_id' => $transaction->id,
-                    'error'          => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
 
         Log::info('MonitorPendingTransactionsJob complete', [
-            'total'   => $pending->count(),
+            'total' => $pending->count(),
             'updated' => $updated,
-            'failed'  => $failed,
+            'failed' => $failed,
         ]);
     }
 }

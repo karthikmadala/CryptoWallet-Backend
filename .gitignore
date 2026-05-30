@@ -23,7 +23,6 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 composer.lock
-/tests
 /docs
 .claude
 graphify-scope

@@ -1,26 +1,41 @@
 <?php
 
-use App\Http\Controllers\Api\V1\AdminController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BlockchainController;
 use App\Http\Controllers\Api\V1\ChainInfoController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\ICOController;
+use App\Http\Controllers\Api\V1\IcoSaleController;
 use App\Http\Controllers\Api\V1\PortfolioController;
 use App\Http\Controllers\Api\V1\ProfileController;
+use App\Http\Controllers\Api\V1\StakingController;
 use App\Http\Controllers\Api\V1\TransactionController;
 use App\Http\Controllers\Api\V1\WalletController;
+use App\Http\Controllers\Api\V1\WalletGenerationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
     Route::get('health', [HealthController::class, 'show']);
     Route::get('chains', [ChainInfoController::class, 'index']);
 
+    // Public branding endpoint — no auth required
+    Route::get('app/branding', [\App\Http\Controllers\Api\V1\AppBrandingController::class, 'show']);
+
     Route::prefix('auth')->group(function (): void {
         Route::middleware('throttle:auth')->group(function (): void {
             Route::post('register', [AuthController::class, 'register']);
             Route::post('login', [AuthController::class, 'login']);
-            Route::post('metamask/nonce', [AuthController::class, 'metamaskNonce']);
+            Route::post('metamask/nonce', [BlockchainController::class, 'nonce']);
             Route::post('metamask/verify', [AuthController::class, 'metamaskVerify']);
         });
+
+        Route::middleware('throttle:otp-verify')->post('verify-otp', [AuthController::class, 'verifyOtp']);
+        Route::middleware('throttle:otp-resend')->post('resend-otp', [AuthController::class, 'resendOtp']);
+        Route::middleware('throttle:forgot-password')->post('forgot-password', [AuthController::class, 'forgotPassword']);
+        Route::post('reset-password', [AuthController::class, 'resetPassword']);
+
+        Route::get('google/redirect', [AuthController::class, 'googleRedirect']);
+        Route::get('google/callback', [AuthController::class, 'googleCallback']);
 
         Route::middleware(['auth:sanctum', 'check.token.expiry', 'store.api.session'])->group(function (): void {
             Route::post('logout', [AuthController::class, 'logout']);
@@ -33,6 +48,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/', [ProfileController::class, 'show']);
             Route::put('/', [ProfileController::class, 'update']);
             Route::patch('change-password', [ProfileController::class, 'changePassword']);
+            Route::get('internal-recipients', [ProfileController::class, 'internalRecipients']);
         });
 
         Route::prefix('wallets')->group(function (): void {
@@ -68,20 +84,56 @@ Route::prefix('v1')->group(function (): void {
             });
         });
 
-        Route::middleware('role:admin')->group(function (): void {
-            Route::get('admin/health', [HealthController::class, 'admin']);
-            Route::get('admin/users', [AdminController::class, 'users']);
-            Route::get('admin/users/{user}', [AdminController::class, 'userDetails']);
-            Route::get('admin/logs', [AdminController::class, 'logs']);
-            Route::get('admin/wallets', [AdminController::class, 'wallets']);
-            Route::get('admin/tokens', [AdminController::class, 'tokens']);
-            Route::post('admin/tokens', [AdminController::class, 'createToken']);
-            Route::put('admin/tokens/{token}', [AdminController::class, 'updateToken']);
-            Route::delete('admin/tokens/{token}', [AdminController::class, 'deleteToken']);
-            Route::patch('admin/tokens/{token}/status', [AdminController::class, 'toggleTokenStatus']);
-            // Admin‑only chain metadata endpoint
-            Route::get('chains', [ChainInfoController::class, 'index']);
+        // ── Blockchain read-only queries ──────────────────────────────────────
+        Route::prefix('blockchain')->group(function (): void {
+            Route::get('token-details', [BlockchainController::class, 'tokenDetails']);
+            Route::post('balance', [BlockchainController::class, 'erc20Balance']);
+            Route::post('native-balance', [BlockchainController::class, 'nativeBalance']);
+            Route::post('receipt', [BlockchainController::class, 'transactionReceipt']);
+            Route::get('gas-price/{chain}', [BlockchainController::class, 'gasPrice']);
+            Route::post('nonce', [BlockchainController::class, 'nonce']);
         });
+
+        // ── Wallet generation ─────────────────────────────────────────────────
+        Route::prefix('wallet-gen')->group(function (): void {
+            Route::get('mnemonic', [WalletGenerationController::class, 'mnemonic']);
+            Route::post('address', [WalletGenerationController::class, 'createAddress']);
+            Route::post('internal', [WalletGenerationController::class, 'createInternalWallet']);
+            Route::post('reveal-key', [WalletGenerationController::class, 'revealKey']);
+        });
+
+        // ── Staking (prepare for MetaMask signing) ────────────────────────────
+        Route::prefix('staking')->group(function (): void {
+            Route::get('user', [StakingController::class, 'userDetails']);
+            Route::get('plan', [StakingController::class, 'planDetails']);
+            Route::middleware('throttle:broadcast')->group(function (): void {
+                Route::post('prepare/stake', [StakingController::class, 'prepareStake']);
+                Route::post('prepare/withdraw', [StakingController::class, 'prepareWithdraw']);
+            });
+        });
+
+        // ── ICO legacy (Phase 1 — preserved) ─────────────────────────────────
+        Route::prefix('ico')->group(function (): void {
+            Route::middleware('throttle:broadcast')->group(function (): void {
+                Route::post('buy/prepare', [ICOController::class, 'prepareBuyTokens']);
+                Route::post('buy', [ICOController::class, 'selfServiceBuyTokens']);
+                Route::post('purchase/confirm', [ICOController::class, 'confirmPurchase']);
+            });
+        });
+
+        // ── ICO Phase 2 — multi-sale launchpad ───────────────────────────────
+        Route::prefix('ico')->middleware(\App\Http\Middleware\EnsureVerifiedUser::class)->group(function (): void {
+            Route::get('tokens', [IcoSaleController::class, 'tokens']);
+            Route::get('tokens/{tokenId}/sale', [IcoSaleController::class, 'activeSale']);
+            Route::get('sales/{saleId}', [IcoSaleController::class, 'show']);
+            Route::get('purchases', [IcoSaleController::class, 'purchaseHistory']);
+
+            Route::middleware('throttle:broadcast')->group(function (): void {
+                Route::post('sales/{saleId}/prepare', [IcoSaleController::class, 'preparePurchase']);
+            });
+        });
+
+        Route::middleware('role:admin')->group(base_path('routes/admin.php'));
     });
 
 });

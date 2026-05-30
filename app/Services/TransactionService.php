@@ -97,6 +97,38 @@ class TransactionService
         });
     }
 
+    public function recordBroadcastTransaction(array $data, User $user): Transaction
+    {
+        $this->validateTransactionData($data);
+
+        return DB::transaction(function () use ($data, $user) {
+            $chain = ChainType::from($data['chain_type']);
+            $wallet = $this->findOwnedWalletByAddress($data['from_address'], $chain, $user->id);
+
+            if (! $wallet) {
+                throw new InvalidTransactionException('Wallet not found or inactive');
+            }
+
+            $transactionData = [
+                'wallet_id' => $wallet->id,
+                'user_id' => $user->id,
+                'token_id' => $this->getTokenId($data['token_address'] ?? null),
+                'tx_hash' => $data['tx_hash'],
+                'from_address' => strtolower($data['from_address']),
+                'to_address' => strtolower($data['to_address']),
+                'amount' => $data['amount'],
+                'chain_type' => $chain->value,
+                'status' => TransactionStatus::SUBMITTED->value,
+                'signing_method' => 'client',
+                'submitted_at' => now(),
+            ];
+
+            $transaction = $this->transactionRepository->create($transactionData);
+
+            return $transaction;
+        });
+    }
+
     public function broadcastTransaction(Transaction $transaction, ?string $signature = null): Transaction
     {
         $this->validateTransactionOwnership($transaction, auth()->user());
@@ -212,19 +244,7 @@ class TransactionService
 
     private function getWalletForTransaction(TransactionDto $dto): Wallet
     {
-        $wallet = Wallet::where('address', strtolower($dto->fromAddress))
-            ->where('chain_type', $dto->chain->value)
-            ->where('user_id', auth()->id())
-            ->where('is_active', true)
-            ->first();
-
-        if (! $wallet && $dto->chain->isEvm()) {
-            $wallet = Wallet::where('address', strtolower($dto->fromAddress))
-                ->where('user_id', auth()->id())
-                ->whereIn('chain_type', [ChainType::ETH->value, ChainType::BNB->value, ChainType::POLYGON->value])
-                ->where('is_active', true)
-                ->first();
-        }
+        $wallet = $this->findOwnedWalletByAddress($dto->fromAddress, $dto->chain, auth()->id());
 
         if (! $wallet) {
             throw new InvalidTransactionException('Wallet not found or inactive');
@@ -249,16 +269,34 @@ class TransactionService
 
     private function validateSufficientBalance(Wallet $wallet, TransactionDto $dto): void
     {
-        $balance = $this->getWalletBalance($wallet, $dto->chain);
-
         if ($dto->isNativeTransfer()) {
-            // For native transfers, check if wallet has enough balance
+            $balance = $this->getWalletBalance($wallet, $dto->chain);
             if (bccomp($balance, $dto->amount, 18) < 0) {
                 throw new InsufficientBalanceException($dto->amount, $balance, $dto->chain->nativeSymbol());
             }
+            return;
         }
-        // For ERC-20 transfers, we'd need to check token balance
-        // This is simplified for now
+
+        if (isset($dto->contractAddress) && $dto->contractAddress) {
+            $token = \App\Models\Token::where('contract_address', strtolower($dto->contractAddress))->first();
+            if ($token) {
+                $balance  = $this->getTokenBalance($wallet, $dto->contractAddress, $dto->chain);
+                $decimals = (int) $token->decimals;
+                if (bccomp($balance, $dto->amount, $decimals) < 0) {
+                    throw new InsufficientBalanceException($dto->amount, $balance, $token->symbol);
+                }
+            }
+        }
+    }
+
+    private function getTokenBalance(Wallet $wallet, string $contractAddress, ChainType $chain): string
+    {
+        $balance = $wallet->balances()
+            ->where('chain_type', $chain->value)
+            ->whereHas('token', fn($q) => $q->where('contract_address', strtolower($contractAddress)))
+            ->first();
+
+        return $balance ? (string) $balance->balance : '0';
     }
 
     private function getWalletBalance(Wallet $wallet, ?ChainType $chain = null): string
@@ -282,4 +320,24 @@ class TransactionService
 
         return $token?->id;
     }
+
+    private function findOwnedWalletByAddress(string $address, ChainType $chain, string|int $userId): ?Wallet
+    {
+        $wallet = Wallet::where('address', strtolower($address))
+            ->where('chain_type', $chain->value)
+            ->where('user_id', $userId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $wallet && $chain->isEvm()) {
+            $wallet = Wallet::where('address', strtolower($address))
+                ->where('user_id', $userId)
+                ->whereIn('chain_type', [ChainType::ETH->value, ChainType::BNB->value, ChainType::POLYGON->value])
+                ->where('is_active', true)
+                ->first();
+        }
+
+        return $wallet;
+    }
+
 }

@@ -7,8 +7,25 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class TransactionResource extends JsonResource
 {
+    /** @var array<int|string, array<int, string>> */
+    private static array $viewerWalletCache = [];
+
     public function toArray(Request $request): array
     {
+        $viewerWalletAddress = null;
+        $user = $request->user();
+
+        if ($user) {
+            $walletAddresses = self::$viewerWalletCache[$user->id]
+                ??= $user->wallets()->pluck('address')->map(fn (string $address) => strtolower($address))->all();
+
+            if (in_array(strtolower((string) $this->to_address), $walletAddresses, true)) {
+                $viewerWalletAddress = strtolower((string) $this->to_address);
+            } elseif (in_array(strtolower((string) $this->from_address), $walletAddresses, true)) {
+                $viewerWalletAddress = strtolower((string) $this->from_address);
+            }
+        }
+
         return [
             'id' => $this->id,
             'tx_hash' => $this->tx_hash,
@@ -30,6 +47,7 @@ class TransactionResource extends JsonResource
             'confirmed_at' => $this->confirmed_at?->toISOString(),
             'created_at' => $this->created_at->toISOString(),
             'updated_at' => $this->updated_at->toISOString(),
+            'viewer_wallet_address' => $viewerWalletAddress,
             'wallet' => new WalletResource($this->whenLoaded('wallet')),
             'token' => new TokenResource($this->whenLoaded('token')),
             'contract_address' => $this->contract_address,

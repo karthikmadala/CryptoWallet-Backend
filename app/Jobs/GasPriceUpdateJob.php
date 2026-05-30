@@ -12,13 +12,12 @@ use Illuminate\Support\Facades\Log;
 class GasPriceUpdateJob implements ShouldQueue
 {
     use Queueable;
-
     public int $tries = 2;
     public int $timeout = 30;
 
     public function __construct()
     {
-        //
+        $this->onQueue('default');
     }
 
     public function handle(GasEstimationService $gasEstimationService): void

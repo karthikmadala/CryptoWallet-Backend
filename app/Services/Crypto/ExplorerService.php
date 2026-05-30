@@ -375,14 +375,9 @@ class ExplorerService
         }
 
         $v2Key = config('crypto.explorer.v2.key');
+        $chainId = config("crypto.chains.{$chain->value}.chain_id");
 
-        // Get chain_id from the native token entry in the tokens table
-        $nativeToken = Token::where('chain_type', $chain->value)
-            ->whereNull('contract_address')
-            ->first();
-        $chainId = $nativeToken?->chain_id;
-
-        if ($v2Key && $chainId) {
+        if ($v2Key && $chainId && $chain === ChainType::ETH) {
             return [
                 'url' => config('crypto.explorer.v2.url', 'https://api.etherscan.io/v2/api'),
                 'key' => $v2Key,

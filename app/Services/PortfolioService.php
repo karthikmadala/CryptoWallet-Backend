@@ -7,9 +7,7 @@ use App\Models\Token;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletBalance;
-use App\Services\Crypto\AlchemyService;
-use App\Services\Crypto\BlockCypherService;
-use App\Services\Crypto\Contracts\EvmRpcServiceInterface;
+use App\Services\Crypto\BlockchainNodeService;
 use App\Services\Crypto\ExplorerService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -33,10 +31,8 @@ class PortfolioService
     private const CACHE_TTL = 60;
 
     public function __construct(
-        private readonly AlchemyService        $alchemy,
+        private readonly BlockchainNodeService $node,
         private readonly ExplorerService       $explorer,
-        private readonly EvmRpcServiceInterface $evmRpc,
-        private readonly BlockCypherService    $blockCypher,
     ) {}
 
     // ─── Public API ──────────────────────────────────────────────────────────
@@ -68,16 +64,17 @@ class PortfolioService
      *
      * @return array{ total_value_usd: string, wallet_count: int, grouped_wallet_count: int, wallets: array, grouped_wallets: array, chain_totals: array }
      */
-    public function getPortfolio(User $user, bool $refresh = false): array
+    public function getPortfolio(User $user, bool $refresh = false, bool $includeBalances = true): array
     {
-        $cacheKey = "portfolio:user:{$user->id}";
+        $cacheKey = "portfolio:user:{$user->id}:" . ($includeBalances ? 'with-balances' : 'summary-only');
 
         if ($refresh) {
             $this->activeWallets($user)->each(fn(Wallet $w) => $this->syncWallet($w));
-            Cache::forget($cacheKey);
+            Cache::forget("portfolio:user:{$user->id}:with-balances");
+            Cache::forget("portfolio:user:{$user->id}:summary-only");
         }
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($user): array {
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($user, $includeBalances): array {
             $wallets = $this->activeWallets($user);
             $totalUsd = '0';
 
@@ -88,13 +85,23 @@ class PortfolioService
                 return $breakdown;
             });
             $walletItems = $walletData->values()->all();
-            $groupedWallets = $this->groupWalletResponsesByAddress($walletItems);
+            $groupedWallets = $this->groupWalletResponsesByAddress($walletItems, $includeBalances);
+            $overviewWalletItems = $includeBalances
+                ? $walletItems
+                : array_map(
+                    fn (array $item): array => [
+                        'wallet' => $item['wallet'],
+                        'balances' => [],
+                        'total_value_usd' => $item['total_value_usd'],
+                    ],
+                    $walletItems
+                );
 
             return [
                 'total_value_usd' => $this->formatUsd($totalUsd),
                 'wallet_count'    => $wallets->count(),
                 'grouped_wallet_count' => count($groupedWallets),
-                'wallets'         => $walletItems,
+                'wallets'         => $overviewWalletItems,
                 'grouped_wallets' => $groupedWallets,
                 'chain_totals'    => $this->computeChainTotals($walletItems),
             ];
@@ -127,11 +134,11 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
                 : $this->fetchEvmRawBalances($address, $chain, $tokens);
             $priceMap = $chain === ChainType::BTC
                 ? []
-                : $this->explorer->getUsdPriceMapForTokens($address, $chain, $tokens);
+                : $this->buildNodePriceMap($chain, $tokens);
 
             return $tokens->map(function (Token $token) use ($rawBalances, $priceMap, $chain): array {
                 $raw      = $rawBalances[$token->id] ?? '0';
-                $balance  = $this->evmRpc->toDecimalUnits($raw, $token->decimals);
+                $balance  = $this->toDecimalUnits($raw, $token->decimals);
                 $price    = $this->resolveTokenPriceUsd($token, $priceMap, $chain);
                 $valueUsd = $price !== null
                     ? $this->formatUsd(bcmul($balance, (string) $price, 8))
@@ -165,7 +172,8 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
             }
 
             Cache::forget("portfolio:{$wallet->id}");
-            Cache::forget("portfolio:user:{$wallet->user_id}");
+            Cache::forget("portfolio:user:{$wallet->user_id}:with-balances");
+            Cache::forget("portfolio:user:{$wallet->user_id}:summary-only");
         } catch (\Throwable $e) {
             Log::error('Wallet sync failed', [
                 'wallet_id' => $wallet->id,
@@ -188,7 +196,7 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
         $totalUsd   = '0';
         $lastSynced = null;
         $balances = $wallet->balances
-            ->filter(fn(WalletBalance $wb) => bccomp((string) $wb->balance, '0', 18) > 0 && $wb->token->enabled)
+            ->filter(fn(WalletBalance $wb) => (bccomp((string) $wb->balance, '0', 18) > 0 || $wb->token->isNative()) && $wb->token->enabled)
             ->sortByDesc(fn(WalletBalance $wb) => (float) ($wb->balance_usd ?? '0'))
             ->map(function (WalletBalance $wb) use (&$totalUsd, &$lastSynced): array {
                 $price = $this->resolveWalletBalancePriceUsd($wb);
@@ -241,26 +249,25 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
     // ─── Balance fetchers ────────────────────────────────────────────────────
 
     /**
-     * Fetch EVM on-chain balances for a wallet/address, returning [ token_id => raw_wei_string ].
+     * Fetch EVM on-chain balances via node (Alchemy → Explorer → RPC fallback).
+     * Returns [ token_id => raw_wei_string ].
      */
     private function fetchEvmRawBalances(string $address, ChainType $chain, Collection $tokens): array
     {
-        $balances = [];
-
-        $nativeToken = $tokens->first(fn(Token $t) => $t->isNative());
-        if ($nativeToken) {
-            $balances[$nativeToken->id] = $this->fetchNativeBalance($address, $chain);
-        }
-
+        $nativeToken   = $tokens->first(fn(Token $t) => $t->isNative());
         $erc20Tokens   = $tokens->filter(fn(Token $t) => ! $t->isNative());
         $contractAddrs = $erc20Tokens->pluck('contract_address')->values()->all();
 
-        if (! empty($contractAddrs)) {
-            $fetched = $this->fetchErc20Balances($address, $contractAddrs, $chain);
+        $result = $this->node->fetchPortfolioBalances($chain, $address, $contractAddrs);
 
-            foreach ($erc20Tokens as $token) {
-                $balances[$token->id] = $fetched[strtolower((string) $token->contract_address)] ?? '0';
-            }
+        $balances = [];
+
+        if ($nativeToken) {
+            $balances[$nativeToken->id] = $result['native_balance'] ?? '0';
+        }
+
+        foreach ($erc20Tokens as $token) {
+            $balances[$token->id] = $result['token_balances'][strtolower((string) $token->contract_address)] ?? '0';
         }
 
         return $balances;
@@ -277,97 +284,20 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
             return [];
         }
 
-        $data = $this->blockCypher->getBalance($address);
+        $data = $this->node->getBtcBalance($address);
 
         return [$btcToken->id => $data['final_balance']];
     }
 
-    /**
-     * Fetch native token balance using provider priority: Alchemy → Explorer → RPC.
-     * Returns '0' if all providers fail.
-     */
-    private function fetchNativeBalance(string $address, ChainType $chain): string
-    {
-        // 1. Alchemy — ETH + Polygon only
-        if ($this->alchemySupports($chain)) {
-            try {
-                return $this->alchemy->getNativeBalance($address, $chain);
-            } catch (\Throwable $e) {
-                Log::warning('Alchemy native balance failed, trying explorer', [
-                    'chain' => $chain->value, 'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        // 2. Block Explorer API (Etherscan / BscScan / PolygonScan)
-        if (config("crypto.explorer.{$chain->value}.key")) {
-            try {
-                return $this->explorer->getNativeBalance($address, $chain);
-            } catch (\Throwable $e) {
-                Log::warning('Explorer native balance failed, falling back to RPC', [
-                    'chain' => $chain->value, 'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        // 3. Direct JSON-RPC fallback (always available)
-        try {
-            return $this->evmRpc->getNativeBalance($address, $chain);
-        } catch (\Throwable $e) {
-            Log::error('All providers failed for native balance', [
-                'chain' => $chain->value, 'address' => $address, 'error' => $e->getMessage(),
-            ]);
-
-            return '0';
-        }
-    }
-
-    /**
-     * Fetch ERC-20 balances using provider priority: Alchemy batch → Explorer → RPC batch.
-     * Returns [ lowercase_contract => decimal_balance ].
-     */
-    private function fetchErc20Balances(string $address, array $contracts, ChainType $chain): array
-    {
-        // 1. Alchemy batch — ETH + Polygon only
-        if ($this->alchemySupports($chain)) {
-            try {
-                return $this->alchemy->getTokenBalances($address, $chain, $contracts);
-            } catch (\Throwable $e) {
-                Log::warning('Alchemy ERC-20 batch failed, trying explorer', [
-                    'chain' => $chain->value, 'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        // 2. Explorer API
-        if (config("crypto.explorer.{$chain->value}.key")) {
-            try {
-                return $this->explorer->getTokenBalances($address, $contracts, $chain);
-            } catch (\Throwable $e) {
-                Log::warning('Explorer ERC-20 balances failed, falling back to RPC', [
-                    'chain' => $chain->value, 'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        // 3. Direct JSON-RPC batch fallback
-        try {
-            return $this->evmRpc->getErc20Balances($address, $contracts, $chain);
-        } catch (\Throwable $e) {
-            Log::error('All providers failed for ERC-20 balances', [
-                'chain' => $chain->value, 'address' => $address, 'error' => $e->getMessage(),
-            ]);
-
-            return array_fill_keys(array_map('strtolower', $contracts), '0');
-        }
-    }
-
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private function alchemySupports(ChainType $chain): bool
+    private function toDecimalUnits(string $rawAmount, int $decimals): string
     {
-        return \in_array($chain, [ChainType::ETH, ChainType::POLYGON], true)
-            && (bool) config('crypto.alchemy.key');
+        if ($rawAmount === '0') {
+            return '0';
+        }
+
+        return bcdiv($rawAmount, bcpow('10', (string) $decimals), $decimals);
     }
 
     private function activeWallets(User $user): Collection
@@ -387,7 +317,7 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
      * @param  array<int, array{wallet: array, balances: array, total_value_usd: string}>  $wallets
      * @return array<int, array<string, mixed>>
      */
-    private function groupWalletResponsesByAddress(array $wallets): array
+    private function groupWalletResponsesByAddress(array $wallets, bool $includeBalances = true): array
     {
         $grouped = [];
 
@@ -415,18 +345,22 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
                 8
             ));
 
-            foreach ($walletPortfolio['balances'] as $balance) {
-                $grouped[$addressKey]['balances'][] = array_merge($balance, [
-                    'chain' => $wallet['chain_type'],
-                ]);
+            if ($includeBalances) {
+                foreach ($walletPortfolio['balances'] as $balance) {
+                    $grouped[$addressKey]['balances'][] = array_merge($balance, [
+                        'chain' => $balance['chain_type'] ?? $wallet['chain_type'],
+                    ]);
+                }
             }
         }
 
         foreach ($grouped as &$group) {
             $group['chains'] = array_values(array_unique($group['chains']));
-            usort($group['balances'], function (array $left, array $right): int {
-                return (float) ($right['value_usd'] ?? '0') <=> (float) ($left['value_usd'] ?? '0');
-            });
+            if ($includeBalances) {
+                usort($group['balances'], function (array $left, array $right): int {
+                    return (float) ($right['value_usd'] ?? '0') <=> (float) ($left['value_usd'] ?? '0');
+                });
+            }
         }
         unset($group);
 
@@ -515,11 +449,11 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
             : $this->fetchEvmRawBalances($wallet->address, $chain, $tokens);
         $priceMap = $chain === ChainType::BTC
             ? []
-            : $this->explorer->getUsdPriceMapForTokens($wallet->address, $chain, $tokens);
+            : $this->buildNodePriceMap($chain, $tokens);
 
         foreach ($tokens as $token) {
             $raw      = $rawBalances[$token->id] ?? '0';
-            $balance  = $this->evmRpc->toDecimalUnits($raw, $token->decimals);
+            $balance  = $this->toDecimalUnits($raw, $token->decimals);
             $price    = $chain === ChainType::BTC ? $token->current_price_usd : $this->resolveTokenPriceUsd($token, $priceMap, $chain);
             $valueUsd = $price !== null
                 ? bcmul($balance, (string) $price, 8)
@@ -535,6 +469,50 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
     /**
      * @return array<int, ChainType>
      */
+    /**
+     * Build price map using node_api_base (CoinGecko + explorer native price).
+     * Returns [ '__native__:eth' => 3200.0, '0xcontract' => 1.0, ... ]
+     *
+     * @param  Collection<int, Token>  $tokens
+     * @return array<string, float|null>
+     */
+    private function buildNodePriceMap(ChainType $chain, Collection $tokens): array
+    {
+        $priceMap = [];
+        $coinGeckoIds = [];
+
+        foreach ($tokens as $token) {
+            if ($token->isNative()) {
+                $priceMap[$this->explorer->nativePriceMapKey($chain)] = null;
+            } else {
+                $priceMap[strtolower((string) $token->contract_address)] = null;
+                if ($token->coingecko_id) {
+                    $coinGeckoIds[$token->coingecko_id] = strtolower((string) $token->contract_address);
+                }
+            }
+        }
+
+        // Native price via node
+        $nativePrice = $this->node->getNativePrice($chain);
+        $priceMap[$this->explorer->nativePriceMapKey($chain)] = $nativePrice;
+
+        // ERC-20 prices via CoinGecko through node
+        if (! empty($coinGeckoIds)) {
+            try {
+                $prices = $this->node->getPrices(array_keys($coinGeckoIds));
+                foreach ($coinGeckoIds as $geckoId => $contract) {
+                    if (isset($prices[$geckoId])) {
+                        $priceMap[$contract] = $prices[$geckoId] !== null ? (float) $prices[$geckoId] : null;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Node price fetch failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return $priceMap;
+    }
+
     private function evmChains(): array
     {
         return [ChainType::ETH, ChainType::BNB, ChainType::POLYGON];

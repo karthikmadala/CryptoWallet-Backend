@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Repositories\Contracts\TransactionRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class TransactionRepository implements TransactionRepositoryInterface
@@ -41,7 +42,42 @@ class TransactionRepository implements TransactionRepositoryInterface
 
     public function getByUserWithFilters(User $user, array $filters = []): LengthAwarePaginator
     {
-        $query = Transaction::where('user_id', $user->id);
+        $walletAddresses = Wallet::query()
+            ->where('user_id', $user->id)
+            ->pluck('address')
+            ->map(fn (string $address) => strtolower($address))
+            ->unique()
+            ->values()
+            ->all();
+
+        $walletFilter = null;
+        if (! empty($filters['wallet_id'])) {
+            $walletFilter = Wallet::query()
+                ->where('id', $filters['wallet_id'])
+                ->where('user_id', $user->id)
+                ->first();
+        }
+
+        $query = Transaction::query()
+            ->where(function (Builder $builder) use ($user, $walletAddresses, $walletFilter): void {
+                if ($walletFilter) {
+                    $builder
+                        ->where('wallet_id', $walletFilter->id)
+                        ->orWhere(function (Builder $recipientQuery) use ($walletFilter): void {
+                            $recipientQuery
+                                ->where('to_address', strtolower($walletFilter->address))
+                                ->where('chain_type', $walletFilter->chain_type->value);
+                        });
+
+                    return;
+                }
+
+                $builder->where('user_id', $user->id);
+
+                if (! empty($walletAddresses)) {
+                    $builder->orWhereIn('to_address', $walletAddresses);
+                }
+            });
 
         if (isset($filters['chain_type'])) {
             $query->where('chain_type', $filters['chain_type']);
@@ -51,7 +87,7 @@ class TransactionRepository implements TransactionRepositoryInterface
             $query->where('status', $filters['status']);
         }
 
-        if (isset($filters['wallet_id'])) {
+        if (isset($filters['wallet_id']) && $walletFilter === null) {
             $query->where('wallet_id', $filters['wallet_id']);
         }
 

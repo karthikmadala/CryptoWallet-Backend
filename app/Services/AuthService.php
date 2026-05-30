@@ -13,14 +13,16 @@ class AuthService
     {
         $user = DB::transaction(function () use ($data): User {
             return User::create([
-                'name' => $data['name'],
-                'email' => strtolower($data['email']),
-                'password' => Hash::make($data['password']),
-                'role' => 'user',
+                'name'           => $data['name'],
+                'email'          => strtolower($data['email']),
+                'password'       => Hash::make($data['password']),
+                'role'           => 'user',
+                'account_status' => \App\Enums\Auth\AccountStatus::PendingVerification->value,
             ]);
         });
 
-        return $this->issueToken($user, $data['device_name'] ?? 'api-token');
+        event(new \App\Events\Auth\UserRegistered($user, request()->ip()));
+        return ['user' => $user, 'requires_otp' => true];
     }
 
     public function login(array $data): array
@@ -35,7 +37,27 @@ class AuthService
             ]);
         }
 
-        return $this->issueToken($user, $data['device_name'] ?? 'api-token');
+        $status = $user->account_status ?? \App\Enums\Auth\AccountStatus::Active;
+
+        if ($status === \App\Enums\Auth\AccountStatus::Suspended || $status === \App\Enums\Auth\AccountStatus::Locked) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                response()->json([
+                    'success' => false,
+                    'message' => 'Account is ' . $status->value . '. Contact support.',
+                    'data'    => null,
+                    'errors'  => null,
+                ], 403)
+            );
+        }
+
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => request()->ip(),
+        ])->save();
+
+        $result = $this->issueToken($user, $data['device_name'] ?? 'api-token');
+        event(new \App\Events\Auth\UserLoggedIn($user, request()->ip()));
+        return $result;
     }
 
     public function refresh(User $user): array
@@ -69,6 +91,7 @@ class AuthService
 
         $user->forceFill(['password' => Hash::make($newPassword)])->save();
         $user->tokens()->delete();
+        event(new \App\Events\Auth\PasswordChanged($user, request()->ip()));
     }
 
     /** Issue a token for an externally-authenticated user (e.g. MetaMask). */
