@@ -18,6 +18,7 @@ class AuthService
                 'password'       => Hash::make($data['password']),
                 'role'           => 'user',
                 'account_status' => \App\Enums\Auth\AccountStatus::PendingVerification->value,
+                'auth_provider'  => 'local',
             ]);
         });
 
@@ -53,6 +54,8 @@ class AuthService
         $user->forceFill([
             'last_login_at' => now(),
             'last_login_ip' => request()->ip(),
+            'is_online'     => true,
+            'user_agent'    => mb_substr(request()->userAgent() ?? '', 0, 512),
         ])->save();
 
         $result = $this->issueToken($user, $data['device_name'] ?? 'api-token');
@@ -74,6 +77,11 @@ class AuthService
 
     public function logout(User $user): void
     {
+        $user->forceFill([
+            'is_online'      => false,
+            'last_logout_at' => now(),
+        ])->save();
+
         $token = $user->currentAccessToken();
 
         if ($token) {
@@ -97,6 +105,13 @@ class AuthService
     /** Issue a token for an externally-authenticated user (e.g. MetaMask). */
     public function issueTokenPublic(User $user, string $deviceName = 'metamask'): array
     {
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => request()->ip(),
+            'is_online'     => true,
+            'user_agent'    => mb_substr(request()->userAgent() ?? '', 0, 512),
+        ])->save();
+
         return $this->issueToken($user, $deviceName);
     }
 
