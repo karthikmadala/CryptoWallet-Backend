@@ -22,6 +22,7 @@ class UserSeeder extends Seeder
                 'role_id'           => $superAdminRole?->id,
                 'account_status'    => 'active',
                 'email_verified_at' => now(),
+                'auth_provider'     => 'local',
             ]
         );
 
@@ -39,6 +40,7 @@ class UserSeeder extends Seeder
                 'role'              => 'user',
                 'account_status'    => 'active',
                 'email_verified_at' => now(),
+                'auth_provider'     => 'local',
             ]
         );
     }
