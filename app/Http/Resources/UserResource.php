@@ -31,7 +31,10 @@ class UserResource extends JsonResource
             'is_online'          => (bool) ($this->is_online ?? false),
             'last_login_at'      => $this->last_login_at?->toISOString(),
             'last_logout_at'     => $this->last_logout_at?->toISOString(),
-            'user_agent'         => $this->user_agent,
+            'user_agent'         => $this->when(
+                $request->user()?->role === 'admin',
+                $this->user_agent
+            ),
         ];
 
         if (isset($this->wallets_count)) {

@@ -55,7 +55,7 @@ class AuthService
             'last_login_at' => now(),
             'last_login_ip' => request()->ip(),
             'is_online'     => true,
-            'user_agent'    => mb_substr(request()->userAgent() ?? '', 0, 512),
+            'user_agent'    => mb_substr(request()->userAgent() ?? '', 0, 512, 'UTF-8'),
         ])->save();
 
         $result = $this->issueToken($user, $data['device_name'] ?? 'api-token');
@@ -109,7 +109,7 @@ class AuthService
             'last_login_at' => now(),
             'last_login_ip' => request()->ip(),
             'is_online'     => true,
-            'user_agent'    => mb_substr(request()->userAgent() ?? '', 0, 512),
+            'user_agent'    => mb_substr(request()->userAgent() ?? '', 0, 512, 'UTF-8'),
         ])->save();
 
         return $this->issueToken($user, $deviceName);
