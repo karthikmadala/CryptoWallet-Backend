@@ -9,20 +9,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Use subquery-based deduplication compatible with both MySQL and SQLite
-        DB::statement('DELETE FROM transactions WHERE id NOT IN (SELECT MIN(id) FROM transactions GROUP BY chain_type, tx_hash) AND tx_hash IS NOT NULL');
+        DB::statement('DELETE FROM transactions WHERE id NOT IN (SELECT id FROM (SELECT MIN(id) AS id FROM transactions GROUP BY chain_type, tx_hash) AS t) AND tx_hash IS NOT NULL');
 
         Schema::table('transactions', function (Blueprint $table) {
             $table->unique(['chain_type', 'tx_hash'], 'transactions_chain_type_tx_hash_unique');
         });
 
-        DB::statement('DELETE FROM tokens WHERE id NOT IN (SELECT MIN(id) FROM tokens GROUP BY chain_type, contract_address) AND contract_address IS NOT NULL AND deleted_at IS NULL');
+        DB::statement('DELETE FROM tokens WHERE id NOT IN (SELECT id FROM (SELECT MIN(id) AS id FROM tokens GROUP BY chain_type, contract_address) AS t) AND contract_address IS NOT NULL AND deleted_at IS NULL');
 
         Schema::table('tokens', function (Blueprint $table) {
             $table->unique(['chain_type', 'contract_address'], 'tokens_chain_type_contract_address_unique');
         });
 
-        DB::statement('DELETE FROM wallet_balances WHERE id NOT IN (SELECT MIN(id) FROM wallet_balances GROUP BY wallet_id, token_id, chain_type)');
+        DB::statement('DELETE FROM wallet_balances WHERE id NOT IN (SELECT id FROM (SELECT MIN(id) AS id FROM wallet_balances GROUP BY wallet_id, token_id, chain_type) AS t)');
 
         Schema::table('wallet_balances', function (Blueprint $table) {
             $table->unique(['wallet_id', 'token_id', 'chain_type'], 'wallet_balances_wallet_token_chain_unique');

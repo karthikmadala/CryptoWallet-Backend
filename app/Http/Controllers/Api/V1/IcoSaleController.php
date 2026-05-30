@@ -111,6 +111,7 @@ class IcoSaleController extends Controller
             'name'         => $token->name,
             'symbol'       => $token->symbol,
             'decimals'     => $token->decimals,
+            'contract_address' => $token->contract_address,
             'chain'        => $token->chain_type->value,
             'logo_url'     => $token->logo_url,
             'description'  => $token->description,

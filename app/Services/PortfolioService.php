@@ -64,16 +64,17 @@ class PortfolioService
      *
      * @return array{ total_value_usd: string, wallet_count: int, grouped_wallet_count: int, wallets: array, grouped_wallets: array, chain_totals: array }
      */
-    public function getPortfolio(User $user, bool $refresh = false): array
+    public function getPortfolio(User $user, bool $refresh = false, bool $includeBalances = true): array
     {
-        $cacheKey = "portfolio:user:{$user->id}";
+        $cacheKey = "portfolio:user:{$user->id}:" . ($includeBalances ? 'with-balances' : 'summary-only');
 
         if ($refresh) {
             $this->activeWallets($user)->each(fn(Wallet $w) => $this->syncWallet($w));
-            Cache::forget($cacheKey);
+            Cache::forget("portfolio:user:{$user->id}:with-balances");
+            Cache::forget("portfolio:user:{$user->id}:summary-only");
         }
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($user): array {
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($user, $includeBalances): array {
             $wallets = $this->activeWallets($user);
             $totalUsd = '0';
 
@@ -84,13 +85,23 @@ class PortfolioService
                 return $breakdown;
             });
             $walletItems = $walletData->values()->all();
-            $groupedWallets = $this->groupWalletResponsesByAddress($walletItems);
+            $groupedWallets = $this->groupWalletResponsesByAddress($walletItems, $includeBalances);
+            $overviewWalletItems = $includeBalances
+                ? $walletItems
+                : array_map(
+                    fn (array $item): array => [
+                        'wallet' => $item['wallet'],
+                        'balances' => [],
+                        'total_value_usd' => $item['total_value_usd'],
+                    ],
+                    $walletItems
+                );
 
             return [
                 'total_value_usd' => $this->formatUsd($totalUsd),
                 'wallet_count'    => $wallets->count(),
                 'grouped_wallet_count' => count($groupedWallets),
-                'wallets'         => $walletItems,
+                'wallets'         => $overviewWalletItems,
                 'grouped_wallets' => $groupedWallets,
                 'chain_totals'    => $this->computeChainTotals($walletItems),
             ];
@@ -161,7 +172,8 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
             }
 
             Cache::forget("portfolio:{$wallet->id}");
-            Cache::forget("portfolio:user:{$wallet->user_id}");
+            Cache::forget("portfolio:user:{$wallet->user_id}:with-balances");
+            Cache::forget("portfolio:user:{$wallet->user_id}:summary-only");
         } catch (\Throwable $e) {
             Log::error('Wallet sync failed', [
                 'wallet_id' => $wallet->id,
@@ -305,7 +317,7 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
      * @param  array<int, array{wallet: array, balances: array, total_value_usd: string}>  $wallets
      * @return array<int, array<string, mixed>>
      */
-    private function groupWalletResponsesByAddress(array $wallets): array
+    private function groupWalletResponsesByAddress(array $wallets, bool $includeBalances = true): array
     {
         $grouped = [];
 
@@ -333,18 +345,22 @@ $tokens = Token::where('chain_type', $chain->value)->where('enabled', true)->get
                 8
             ));
 
-            foreach ($walletPortfolio['balances'] as $balance) {
-                $grouped[$addressKey]['balances'][] = array_merge($balance, [
-                    'chain' => $balance['chain_type'] ?? $wallet['chain_type'],
-                ]);
+            if ($includeBalances) {
+                foreach ($walletPortfolio['balances'] as $balance) {
+                    $grouped[$addressKey]['balances'][] = array_merge($balance, [
+                        'chain' => $balance['chain_type'] ?? $wallet['chain_type'],
+                    ]);
+                }
             }
         }
 
         foreach ($grouped as &$group) {
             $group['chains'] = array_values(array_unique($group['chains']));
-            usort($group['balances'], function (array $left, array $right): int {
-                return (float) ($right['value_usd'] ?? '0') <=> (float) ($left['value_usd'] ?? '0');
-            });
+            if ($includeBalances) {
+                usort($group['balances'], function (array $left, array $right): int {
+                    return (float) ($right['value_usd'] ?? '0') <=> (float) ($left['value_usd'] ?? '0');
+                });
+            }
         }
         unset($group);
 
