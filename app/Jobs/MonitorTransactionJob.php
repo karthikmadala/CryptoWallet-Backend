@@ -3,11 +3,13 @@
 namespace App\Jobs;
 
 use App\Enums\TransactionStatus;
+use App\Mail\TransactionMail;
 use App\Models\Transaction;
 use App\Services\TransactionMonitorService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class MonitorTransactionJob implements ShouldQueue
 {
@@ -49,6 +51,14 @@ class MonitorTransactionJob implements ShouldQueue
                 'status' => $updatedTransaction->status->value,
                 'confirmations' => $updatedTransaction->confirmations_count,
             ]);
+
+            // Send email when status first becomes terminal
+            if ($updatedTransaction->status->isTerminal() && ! $transaction->status->isTerminal()) {
+                $user = $updatedTransaction->user ?? $updatedTransaction->wallet?->user;
+                if ($user && $user->email) {
+                    Mail::to($user->email)->queue(new TransactionMail($user, $updatedTransaction));
+                }
+            }
 
             // If still not terminal, schedule next check
             if (!$updatedTransaction->status->isTerminal()) {

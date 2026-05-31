@@ -43,6 +43,8 @@ class GoogleAuthService
                 'auth_provider'     => 'google',
                 'account_status'    => AccountStatus::Active->value,
                 'email_verified_at' => now(),
+                'menu_restrictions' => ['ico', 'staking'],
+                'encryption_salt'   => base64_encode(random_bytes(16)),
             ]);
         } elseif (! $user->email_verified_at) {
             $user->forceFill([

@@ -13,12 +13,14 @@ class AuthService
     {
         $user = DB::transaction(function () use ($data): User {
             return User::create([
-                'name'           => $data['name'],
-                'email'          => strtolower($data['email']),
-                'password'       => Hash::make($data['password']),
-                'role'           => 'user',
-                'account_status' => \App\Enums\Auth\AccountStatus::PendingVerification->value,
-                'auth_provider'  => 'local',
+                'name'              => $data['name'],
+                'email'             => strtolower($data['email']),
+                'password'          => Hash::make($data['password']),
+                'role'              => 'user',
+                'account_status'    => \App\Enums\Auth\AccountStatus::PendingVerification->value,
+                'auth_provider'     => 'local',
+                'menu_restrictions' => ['ico', 'staking'],
+                'encryption_salt'   => base64_encode(random_bytes(16)),
             ]);
         });
 
