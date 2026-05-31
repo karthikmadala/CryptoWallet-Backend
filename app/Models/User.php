@@ -25,6 +25,10 @@ class User extends Authenticatable
         'account_status',
         'last_login_at',
         'last_login_ip',
+        'auth_provider',
+        'is_online',
+        'last_logout_at',
+        'user_agent',
     ];
 
     protected $hidden = [
@@ -41,6 +45,8 @@ class User extends Authenticatable
             'menu_restrictions'  => 'array',
             'account_status'     => \App\Enums\Auth\AccountStatus::class,
             'last_login_at'      => 'datetime',
+            'is_online'          => 'boolean',
+            'last_logout_at'     => 'datetime',
         ];
     }
 

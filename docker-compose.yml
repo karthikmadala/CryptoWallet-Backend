@@ -1,5 +1,6 @@
 services:
   frontend:
+    container_name: crypto-wallet-web
     build:
       context: ../frontend-angular
       dockerfile: Dockerfile
@@ -23,6 +24,7 @@ services:
       timeout: 10s
       retries: 3
   node_api_base:
+    container_name: crypto-wallet-node
     build:
       context: ../node_api_base
       dockerfile: Dockerfile
@@ -41,6 +43,7 @@ services:
       retries: 3
 
   app:
+    container_name: crypto-wallet-backend
     build:
       context: .
       dockerfile: Dockerfile
@@ -80,6 +83,7 @@ services:
       retries: 3
 
   queue-worker:
+    container_name: crypto-wallet-queue
     image: ghcr.io/${GHCR_OWNER}/crypto-portfolio-backend:latest
     restart: unless-stopped
     env_file:
@@ -114,6 +118,7 @@ services:
         condition: service_started
 
   apache:
+    container_name: crypto-wallet-apache
     build:
       context: .
       dockerfile: docker/apache/Dockerfile
@@ -127,6 +132,7 @@ services:
       - storage_data:/var/www/html/storage
 
   mysql:
+    container_name: crypto-wallet-mysql
     image: mysql:8.0
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password --innodb-buffer-pool-size=256M
@@ -147,6 +153,7 @@ services:
       retries: 10
 
   redis:
+    container_name: crypto-wallet-redis
     image: redis:7.2-alpine
     restart: unless-stopped
     command: redis-server --appendonly yes --save 60 1000

@@ -27,6 +27,14 @@ class UserResource extends JsonResource
             'menu_restrictions'  => $this->menu_restrictions ?? [],
             'created_at'         => $this->created_at?->toISOString(),
             'updated_at'         => $this->updated_at?->toISOString(),
+            'auth_provider'      => $this->auth_provider ?? 'local',
+            'is_online'          => (bool) ($this->is_online ?? false),
+            'last_login_at'      => $this->last_login_at?->toISOString(),
+            'last_logout_at'     => $this->last_logout_at?->toISOString(),
+            'user_agent'         => $this->when(
+                $request->user()?->role === 'admin',
+                $this->user_agent
+            ),
         ];
 
         if (isset($this->wallets_count)) {
