@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\ChainInfoController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ICOController;
 use App\Http\Controllers\Api\V1\IcoSaleController;
+use App\Http\Controllers\Api\V1\KycController;
 use App\Http\Controllers\Api\V1\PortfolioController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\StakingController;
@@ -44,6 +45,7 @@ Route::prefix('v1')->group(function (): void {
     });
 
     Route::middleware(['auth:sanctum', 'check.token.expiry', 'store.api.session'])->group(function (): void {
+        // Profile + KYC always accessible — user must reach KYC page to complete verification
         Route::prefix('profile')->group(function (): void {
             Route::get('/', [ProfileController::class, 'show']);
             Route::put('/', [ProfileController::class, 'update']);
@@ -51,89 +53,92 @@ Route::prefix('v1')->group(function (): void {
             Route::get('internal-recipients', [ProfileController::class, 'internalRecipients']);
         });
 
-        Route::prefix('wallets')->group(function (): void {
-            Route::get('/', [WalletController::class, 'index']);
-            Route::post('/', [WalletController::class, 'store']);
-            Route::delete('{wallet}', [WalletController::class, 'destroy']);
-            Route::post('metamask/nonce', [WalletController::class, 'metamaskNonce']);
-            Route::post('metamask/verify', [WalletController::class, 'metamaskVerify']);
+        Route::prefix('kyc')->group(function (): void {
+            Route::get('/', [KycController::class, 'index']);
+            Route::post('documents/{document}', [KycController::class, 'upload']);
+            Route::get('submissions/{submission}/download', [KycController::class, 'download']);
         });
 
-        Route::middleware('throttle:portfolio')->group(function (): void {
-            Route::get('portfolio', [PortfolioController::class, 'index']);
-            // static segment must precede the {wallet} wildcard
-            Route::get('portfolio/chain/{chain}', [PortfolioController::class, 'chain']);
-            Route::get('portfolio/{wallet}', [PortfolioController::class, 'show']);
-        });
-
-        Route::get('chain/{chain}/address/{address}/info', [ChainInfoController::class, 'info']);
-
-        // Transaction routes
-        Route::prefix('transactions')->group(function (): void {
-            Route::post('prepare', [TransactionController::class, 'prepare']);
-            Route::get('/', [TransactionController::class, 'index']);
-            Route::get('{transaction}', [TransactionController::class, 'show']);
-            Route::post('{transaction}/status', [TransactionController::class, 'checkStatus']);
-
-            Route::middleware('throttle:broadcast')->group(function (): void {
-                Route::post('record', [TransactionController::class, 'record']);
-                Route::post('/', [TransactionController::class, 'store']);
-                Route::post('{transaction}/cancel', [TransactionController::class, 'cancel']);
-                Route::post('sign', [TransactionController::class, 'sign']);
-                Route::post('broadcast', [TransactionController::class, 'broadcast']);
+        // All other user features require KYC when admin has enabled enforcement
+        Route::middleware('kyc.completed')->group(function (): void {
+            Route::prefix('wallets')->group(function (): void {
+                Route::get('/', [WalletController::class, 'index']);
+                Route::post('/', [WalletController::class, 'store']);
+                Route::delete('{wallet}', [WalletController::class, 'destroy']);
+                Route::post('metamask/nonce', [WalletController::class, 'metamaskNonce']);
+                Route::post('metamask/verify', [WalletController::class, 'metamaskVerify']);
             });
-        });
 
-        // ── Blockchain read-only queries ──────────────────────────────────────
-        Route::prefix('blockchain')->group(function (): void {
-            Route::get('token-details', [BlockchainController::class, 'tokenDetails']);
-            Route::post('balance', [BlockchainController::class, 'erc20Balance']);
-            Route::post('native-balance', [BlockchainController::class, 'nativeBalance']);
-            Route::post('receipt', [BlockchainController::class, 'transactionReceipt']);
-            Route::get('gas-price/{chain}', [BlockchainController::class, 'gasPrice']);
-            Route::post('nonce', [BlockchainController::class, 'nonce']);
-        });
-
-        // ── Wallet generation ─────────────────────────────────────────────────
-        Route::prefix('wallet-gen')->group(function (): void {
-            Route::get('mnemonic', [WalletGenerationController::class, 'mnemonic']);
-            Route::post('address', [WalletGenerationController::class, 'createAddress']);
-            Route::post('internal', [WalletGenerationController::class, 'createInternalWallet']);
-            Route::post('reveal-key', [WalletGenerationController::class, 'revealKey']);
-        });
-
-        // ── Staking (prepare for MetaMask signing) ────────────────────────────
-        Route::prefix('staking')->group(function (): void {
-            Route::get('user', [StakingController::class, 'userDetails']);
-            Route::get('plan', [StakingController::class, 'planDetails']);
-            Route::middleware('throttle:broadcast')->group(function (): void {
-                Route::post('prepare/stake', [StakingController::class, 'prepareStake']);
-                Route::post('prepare/withdraw', [StakingController::class, 'prepareWithdraw']);
+            Route::middleware('throttle:portfolio')->group(function (): void {
+                Route::get('portfolio', [PortfolioController::class, 'index']);
+                Route::get('portfolio/chain/{chain}', [PortfolioController::class, 'chain']);
+                Route::get('portfolio/{wallet}', [PortfolioController::class, 'show']);
             });
-        });
 
-        // ── ICO legacy (Phase 1 — preserved) ─────────────────────────────────
-        Route::prefix('ico')->group(function (): void {
-            Route::middleware('throttle:broadcast')->group(function (): void {
-                Route::post('buy/prepare', [ICOController::class, 'prepareBuyTokens']);
-                Route::post('buy', [ICOController::class, 'selfServiceBuyTokens']);
-                Route::post('purchase/confirm', [ICOController::class, 'confirmPurchase']);
+            Route::get('chain/{chain}/address/{address}/info', [ChainInfoController::class, 'info']);
+
+            Route::prefix('transactions')->group(function (): void {
+                Route::post('prepare', [TransactionController::class, 'prepare']);
+                Route::get('/', [TransactionController::class, 'index']);
+                Route::get('{transaction}', [TransactionController::class, 'show']);
+                Route::post('{transaction}/status', [TransactionController::class, 'checkStatus']);
+
+                Route::middleware('throttle:broadcast')->group(function (): void {
+                    Route::post('record', [TransactionController::class, 'record']);
+                    Route::post('/', [TransactionController::class, 'store']);
+                    Route::post('{transaction}/cancel', [TransactionController::class, 'cancel']);
+                    Route::post('sign', [TransactionController::class, 'sign']);
+                    Route::post('broadcast', [TransactionController::class, 'broadcast']);
+                });
             });
-        });
 
-        // ── ICO Phase 2 — multi-sale launchpad ───────────────────────────────
-        Route::prefix('ico')->middleware(\App\Http\Middleware\EnsureVerifiedUser::class)->group(function (): void {
-            Route::get('tokens', [IcoSaleController::class, 'tokens']);
-            Route::get('tokens/{tokenId}/sale', [IcoSaleController::class, 'activeSale']);
-            Route::get('sales/{saleId}', [IcoSaleController::class, 'show']);
-            Route::get('purchases', [IcoSaleController::class, 'purchaseHistory']);
-
-            Route::middleware('throttle:broadcast')->group(function (): void {
-                Route::post('sales/{saleId}/prepare', [IcoSaleController::class, 'preparePurchase']);
+            Route::prefix('blockchain')->group(function (): void {
+                Route::get('token-details', [BlockchainController::class, 'tokenDetails']);
+                Route::post('balance', [BlockchainController::class, 'erc20Balance']);
+                Route::post('native-balance', [BlockchainController::class, 'nativeBalance']);
+                Route::post('receipt', [BlockchainController::class, 'transactionReceipt']);
+                Route::get('gas-price/{chain}', [BlockchainController::class, 'gasPrice']);
+                Route::post('nonce', [BlockchainController::class, 'nonce']);
             });
-        });
+
+            Route::prefix('wallet-gen')->group(function (): void {
+                Route::get('mnemonic', [WalletGenerationController::class, 'mnemonic']);
+                Route::post('address', [WalletGenerationController::class, 'createAddress']);
+                Route::post('internal', [WalletGenerationController::class, 'createInternalWallet']);
+                Route::post('reveal-key', [WalletGenerationController::class, 'revealKey']);
+            });
+
+            Route::prefix('staking')->group(function (): void {
+                Route::get('user', [StakingController::class, 'userDetails']);
+                Route::get('plan', [StakingController::class, 'planDetails']);
+                Route::middleware('throttle:broadcast')->group(function (): void {
+                    Route::post('prepare/stake', [StakingController::class, 'prepareStake']);
+                    Route::post('prepare/withdraw', [StakingController::class, 'prepareWithdraw']);
+                });
+            });
+
+            // ── ICO legacy (Phase 1 — preserved) ─────────────────────────────
+            Route::prefix('ico')->group(function (): void {
+                Route::middleware('throttle:broadcast')->group(function (): void {
+                    Route::post('buy/prepare', [ICOController::class, 'prepareBuyTokens']);
+                    Route::post('buy', [ICOController::class, 'selfServiceBuyTokens']);
+                    Route::post('purchase/confirm', [ICOController::class, 'confirmPurchase']);
+                });
+            });
+
+            // ── ICO Phase 2 — multi-sale launchpad ───────────────────────────
+            Route::prefix('ico')->middleware(\App\Http\Middleware\EnsureVerifiedUser::class)->group(function (): void {
+                Route::get('tokens', [IcoSaleController::class, 'tokens']);
+                Route::get('tokens/{tokenId}/sale', [IcoSaleController::class, 'activeSale']);
+                Route::get('sales/{saleId}', [IcoSaleController::class, 'show']);
+                Route::get('purchases', [IcoSaleController::class, 'purchaseHistory']);
+
+                Route::middleware('throttle:broadcast')->group(function (): void {
+                    Route::post('sales/{saleId}/prepare', [IcoSaleController::class, 'preparePurchase']);
+                });
+            });
+        }); // end kyc.completed
 
         Route::middleware('role:admin')->group(base_path('routes/admin.php'));
     });
-
 });

@@ -1,0 +1,1 @@
+{"nodes": [{"id": "exception_WalletGenerationException", "label": "Wallet Generation Exception", "file_type": "code", "source_file": "app/Exceptions/WalletGenerationException.php", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

@@ -82,6 +82,11 @@ class User extends Authenticatable
         return $this->hasMany(SocialAccount::class);
     }
 
+    public function kycSubmissions(): HasMany
+    {
+        return $this->hasMany(KycSubmission::class);
+    }
+
     public function role(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Role::class);

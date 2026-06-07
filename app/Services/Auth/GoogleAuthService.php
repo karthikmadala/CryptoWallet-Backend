@@ -29,7 +29,9 @@ class GoogleAuthService
 
         if ($existingSocial) {
             $this->updateTokens($existingSocial, $googleUser);
-            return ['user' => $existingSocial->user, 'is_new' => false];
+            $this->markGoogleEmailVerified($existingSocial->user);
+
+            return ['user' => $existingSocial->user->fresh(), 'is_new' => false];
         }
 
         $user = User::where('email', strtolower($googleUser->getEmail()))->first();
@@ -46,12 +48,8 @@ class GoogleAuthService
                 'menu_restrictions' => ['ico', 'staking'],
                 'encryption_salt'   => base64_encode(random_bytes(16)),
             ]);
-        } elseif (! $user->email_verified_at) {
-            $user->forceFill([
-                'email_verified_at' => now(),
-                'account_status'    => AccountStatus::Active->value,
-                'auth_provider'     => 'google',
-            ])->save();
+        } else {
+            $this->markGoogleEmailVerified($user);
         }
 
         SocialAccount::create([
@@ -77,6 +75,25 @@ class GoogleAuthService
                 : $account->refresh_token_enc,
             'token_expires_at'  => $googleUser->expiresIn ? now()->addSeconds($googleUser->expiresIn) : null,
         ])->save();
+    }
+
+    private function markGoogleEmailVerified(User $user): void
+    {
+        $changes = [
+            'auth_provider' => 'google',
+        ];
+
+        if (! $user->email_verified_at) {
+            $changes['email_verified_at'] = now();
+        }
+
+        if ($user->account_status === AccountStatus::PendingVerification) {
+            $changes['account_status'] = AccountStatus::Active->value;
+        }
+
+        if ($changes !== ['auth_provider' => 'google']) {
+            $user->forceFill($changes)->save();
+        }
     }
 
     private function encrypt(string $plaintext): string

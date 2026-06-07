@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->api(prepend: ['throttle:api', RequestIdMiddleware::class, LogApiRequest::class]);
 
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission'        => CheckPermission::class,
             'checkRole'          => CheckRole::class,
             'store.api.session'  => StoreApiSessionMetadata::class,
+            'kyc.completed'      => \App\Http\Middleware\EnsureKycCompleted::class,
         ]);
 
         $middleware->redirectGuestsTo(fn () => null);

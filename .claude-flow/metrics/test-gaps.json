@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-04T13:48:00.280Z",
+  "mode": "headless",
+  "workerType": "testgaps",
+  "model": "sonnet",
+  "durationMs": 3803,
+  "executionId": "testgaps_1780580876477_r0g91b",
+  "success": false,
+  "findings": {
+    "sections": [],
+    "codeBlocks": []
+  },
+  "rawOutputPreview": "You've hit your session limit · resets 7:40pm (Asia/Calcutta)\n",
+  "rawOutputLength": 62
+}

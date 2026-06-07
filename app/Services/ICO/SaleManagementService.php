@@ -97,31 +97,73 @@ class SaleManagementService
 
     public function createSale(IcoToken $token, array $data): IcoSale
     {
-        return IcoSale::create([
-            'ico_token_id'     => $token->id,
-            'sale_type'        => $data['sale_type'],
-            'status'           => IcoSaleStatus::DRAFT->value,
-            'contract_address' => $data['contract_address'],
-            'chain_type'       => $data['chain_type'],
-            'token_price_usd'  => $data['token_price_usd'],
-            'total_allocation' => $data['total_allocation'],
-            'sold_amount'      => '0',
-            'min_purchase_usd' => $data['min_purchase_usd'] ?? null,
-            'max_purchase_usd' => $data['max_purchase_usd'] ?? null,
-            'starts_at'        => $data['starts_at'] ?? null,
-            'ends_at'          => $data['ends_at'] ?? null,
+        $sale = IcoSale::create([
+            'ico_token_id'          => $token->id,
+            'sale_type'             => $data['sale_type'],
+            'status'                => IcoSaleStatus::DRAFT->value,
+            'contract_address'      => $data['contract_address'],
+            'owner_address'         => $data['owner_address'] ?? null,
+            'signer_address'        => $data['signer_address'] ?? null,
+            'signer_private_key_enc' => isset($data['signer_private_key'])
+                ? encrypt($data['signer_private_key'])
+                : null,
+            'chain_type'            => $data['chain_type'],
+            'token_price_usd'       => $data['token_price_usd'],
+            'total_allocation'      => $data['total_allocation'],
+            'sold_amount'           => '0',
+            'min_purchase_usd'      => $data['min_purchase_usd'] ?? null,
+            'max_purchase_usd'      => $data['max_purchase_usd'] ?? null,
+            'starts_at'             => $data['starts_at'] ?? null,
+            'ends_at'               => $data['ends_at'] ?? null,
         ]);
+
+        if (! empty($data['payment_methods'])) {
+            foreach ($data['payment_methods'] as $pm) {
+                IcoPaymentMethod::create([
+                    'ico_sale_id'      => $sale->id,
+                    'payment_index'    => $pm['payment_index'],
+                    'symbol'           => strtoupper($pm['symbol']),
+                    'name'             => $pm['name'] ?? strtoupper($pm['symbol']),
+                    'contract_address' => $pm['contract_address'] ?? null,
+                    'chain_type'       => $data['chain_type'],
+                    'decimals'         => $pm['decimals'] ?? 18,
+                    'price_usd'        => null,
+                    'is_active'        => $pm['is_active'] ?? true,
+                ]);
+            }
+        }
+
+        return $sale;
     }
 
     public function updateSale(IcoSale $sale, array $data): IcoSale
     {
         if ($sale->status->isActive()) {
-            // Only scheduling fields can change while active
-            $allowed = ['starts_at', 'ends_at', 'min_purchase_usd', 'max_purchase_usd'];
+            $allowed = ['starts_at', 'ends_at', 'min_purchase_usd', 'max_purchase_usd', 'token_price_usd'];
             $data    = array_intersect_key($data, array_flip($allowed));
         }
 
-        $sale->update(array_filter($data, fn ($v) => $v !== null));
+        $updates = array_filter([
+            'contract_address' => $data['contract_address'] ?? null,
+            'owner_address'    => $data['owner_address'] ?? null,
+            'signer_address'   => $data['signer_address'] ?? null,
+            'token_price_usd'  => $data['token_price_usd'] ?? null,
+            'total_allocation' => $data['total_allocation'] ?? null,
+            'min_purchase_usd' => $data['min_purchase_usd'] ?? null,
+            'max_purchase_usd' => $data['max_purchase_usd'] ?? null,
+            'starts_at'        => $data['starts_at'] ?? null,
+            'ends_at'          => $data['ends_at'] ?? null,
+        ], fn ($v) => $v !== null);
+
+        if (isset($data['signer_private_key'])) {
+            $updates['signer_private_key_enc'] = encrypt($data['signer_private_key']);
+        }
+
+        if (isset($data['sale_type'])) {
+            $updates['sale_type'] = $data['sale_type'];
+        }
+
+        $sale->update($updates);
 
         return $sale->fresh();
     }
@@ -203,8 +245,11 @@ class SaleManagementService
             'ico_sale_id'      => $sale->id,
             'payment_index'    => $data['payment_index'],
             'symbol'           => strtoupper($data['symbol']),
+            'name'             => $data['name'] ?? strtoupper($data['symbol']),
             'contract_address' => $data['contract_address'] ?? null,
             'chain_type'       => $data['chain_type'],
+            'decimals'         => $data['decimals'] ?? 18,
+            'price_usd'        => $data['price_usd'] ?? null,
             'is_active'        => $data['is_active'] ?? true,
         ]);
     }
@@ -213,7 +258,10 @@ class SaleManagementService
     {
         $method->update(array_filter([
             'symbol'           => isset($data['symbol']) ? strtoupper($data['symbol']) : null,
+            'name'             => $data['name'] ?? null,
             'contract_address' => $data['contract_address'] ?? null,
+            'decimals'         => $data['decimals'] ?? null,
+            'price_usd'        => $data['price_usd'] ?? null,
             'is_active'        => $data['is_active'] ?? null,
         ], fn ($v) => $v !== null));
 

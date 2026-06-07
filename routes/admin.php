@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\V1\AdminController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ICOController;
 use App\Http\Controllers\Api\V1\IcoAdminController;
+use App\Http\Controllers\Api\V1\KycAdminController;
+use App\Http\Controllers\Api\V1\PaymentSettingsController;
 use App\Http\Controllers\Api\V1\RoleController;
 use App\Http\Controllers\Api\V1\StakingController;
 use App\Http\Controllers\Api\V1\StorageLogController;
@@ -38,6 +40,15 @@ Route::prefix('admin')->group(function (): void {
         ->middleware('permission:tokens.delete');
     Route::patch('tokens/{token}/status', [AdminController::class, 'toggleTokenStatus'])
         ->middleware('permission:tokens.toggle');
+
+    Route::prefix('kyc')->middleware('permission:kyc.manage')->group(function (): void {
+        Route::get('documents', [KycAdminController::class, 'documents']);
+        Route::post('documents', [KycAdminController::class, 'storeDocument']);
+        Route::put('documents/{document}', [KycAdminController::class, 'updateDocument']);
+        Route::get('submissions', [KycAdminController::class, 'submissions']);
+        Route::get('submissions/{submission}/download', [KycAdminController::class, 'download']);
+        Route::patch('submissions/{submission}/review', [KycAdminController::class, 'review']);
+    });
 
     // Admin wallet generation (full key pair)
     Route::post('wallet-gen/keypair', [WalletGenerationController::class, 'createKeypair']);
@@ -76,6 +87,12 @@ Route::prefix('admin')->group(function (): void {
         Route::get('purchases', [IcoAdminController::class, 'purchases']);
     });
 
+    Route::prefix('payment-settings')->middleware('permission:ico.manage')->group(function (): void {
+        Route::get('/', [PaymentSettingsController::class, 'show']);
+        Route::post('wallet', [PaymentSettingsController::class, 'saveWallet']);
+        Route::delete('wallet', [PaymentSettingsController::class, 'disconnectWallet']);
+    });
+
     // Admin analytics dashboard
     Route::get('analytics', [AdminController::class, 'analytics'])
         ->middleware('permission:admin.access');
@@ -92,4 +109,8 @@ Route::prefix('admin')->group(function (): void {
     // Branding settings (admin)
     Route::get('settings/branding',  [\App\Http\Controllers\Api\V1\AppBrandingController::class, 'adminShow']);
     Route::post('settings/branding', [\App\Http\Controllers\Api\V1\AppBrandingController::class, 'adminSave']);
+
+    // KYC enforcement toggle
+    Route::get('settings/kyc', [\App\Http\Controllers\Api\V1\KycSettingsController::class, 'show']);
+    Route::patch('settings/kyc', [\App\Http\Controllers\Api\V1\KycSettingsController::class, 'update']);
 });

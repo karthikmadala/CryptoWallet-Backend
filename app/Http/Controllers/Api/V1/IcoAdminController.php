@@ -112,14 +112,23 @@ class IcoAdminController extends Controller
         ));
     }
 
-    public function deleteToken(IcoToken $icoToken): JsonResponse
+    public function deleteToken(string $icoToken): JsonResponse
     {
-        if ($icoToken->sales()->where('status', 'active')->exists()) {
+        $token = IcoToken::withTrashed()->find($icoToken);
+        if (!$token) {
+            return api_response(false, 'ICO token not found.', null, null, 404);
+        }
+
+        if ($token->trashed()) {
+            return api_response(true, 'Token already deleted.');
+        }
+
+        if ($token->sales()->where('status', 'active')->exists()) {
             return api_response(false, 'Cannot delete token with an active sale.', null, null, 422);
         }
 
-        $this->audit->log('ico_token', $icoToken->id, 'deleted', $icoToken->toArray(), []);
-        $icoToken->delete();
+        $this->audit->log('ico_token', $token->id, 'deleted', $token->toArray(), []);
+        $token->delete();
 
         return api_response(true, 'Token deleted.');
     }
@@ -152,21 +161,37 @@ class IcoAdminController extends Controller
         ]);
     }
 
-    public function createSale(Request $request, IcoToken $icoToken): JsonResponse
+    public function createSale(Request $request, string $icoToken): JsonResponse
     {
+        $token = IcoToken::withTrashed()->find($icoToken);
+        if (!$token || $token->trashed()) {
+            return api_response(false, 'ICO token not found or deleted. Choose an active token.', null, null, 404);
+        }
+
         $data = $request->validate([
-            'sale_type'        => 'required|string|in:pre_sale,public_sale,private_sale',
-            'contract_address' => 'required|string|regex:/^0x[0-9a-fA-F]{40}$/',
-            'chain_type'       => 'required|string|in:eth,bnb,polygon',
-            'token_price_usd'  => 'required|numeric|gt:0',
-            'total_allocation' => 'required|numeric|gt:0',
-            'min_purchase_usd' => 'nullable|numeric|gt:0',
-            'max_purchase_usd' => 'nullable|numeric|gt:0',
-            'starts_at'        => 'nullable|date',
-            'ends_at'          => 'nullable|date|after:starts_at',
+            'sale_type'              => 'required|string|in:pre_sale,public_sale,private_sale',
+            'contract_address'       => 'required|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'chain_type'             => 'required|string|in:eth,bnb,polygon',
+            'owner_address'          => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'signer_address'         => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'signer_private_key'     => 'nullable|string|regex:/^(0x)?[0-9a-fA-F]{64}$/',
+            'token_price_usd'        => 'required|numeric|gt:0',
+            'total_allocation'       => 'required|numeric|gt:0',
+            'min_purchase_usd'       => 'nullable|numeric|gt:0',
+            'max_purchase_usd'       => 'nullable|numeric|gt:0',
+            'starts_at'              => 'nullable|date',
+            'ends_at'                => 'nullable|date|after:starts_at',
+            'payment_methods'        => 'nullable|array|max:20',
+            'payment_methods.*.payment_index'    => 'required|integer|min:0',
+            'payment_methods.*.symbol'           => 'required|string|max:20',
+            'payment_methods.*.name'             => 'nullable|string|max:100',
+            'payment_methods.*.contract_address' => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'payment_methods.*.price_feed'       => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'payment_methods.*.decimals'         => 'nullable|integer|min:0|max:36',
+            'payment_methods.*.is_active'        => 'nullable|boolean',
         ]);
 
-        $sale = $this->management->createSale($icoToken, $data);
+        $sale = $this->management->createSale($token, $data);
         $this->audit->log('ico_sale', $sale->id, 'created', [], $sale->toArray());
 
         return api_response(true, 'Sale created.', ['sale' => $this->formatSaleAdmin($sale)], null, 201);
@@ -175,14 +200,17 @@ class IcoAdminController extends Controller
     public function updateSale(Request $request, IcoSale $icoSale): JsonResponse
     {
         $data = $request->validate([
-            'sale_type'        => 'sometimes|string|in:pre_sale,public_sale,private_sale',
-            'contract_address' => 'sometimes|string|regex:/^0x[0-9a-fA-F]{40}$/',
-            'token_price_usd'  => 'sometimes|numeric|gt:0',
-            'total_allocation' => 'sometimes|numeric|gt:0',
-            'min_purchase_usd' => 'nullable|numeric|gt:0',
-            'max_purchase_usd' => 'nullable|numeric|gt:0',
-            'starts_at'        => 'nullable|date',
-            'ends_at'          => 'nullable|date',
+            'sale_type'          => 'sometimes|string|in:pre_sale,public_sale,private_sale',
+            'contract_address'   => 'sometimes|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'owner_address'      => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'signer_address'     => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'signer_private_key' => 'nullable|string|regex:/^(0x)?[0-9a-fA-F]{64}$/',
+            'token_price_usd'    => 'sometimes|numeric|gt:0',
+            'total_allocation'   => 'sometimes|numeric|gt:0',
+            'min_purchase_usd'   => 'nullable|numeric|gt:0',
+            'max_purchase_usd'   => 'nullable|numeric|gt:0',
+            'starts_at'          => 'nullable|date',
+            'ends_at'            => 'nullable|date',
         ]);
 
         $before = $icoSale->toArray();
@@ -230,8 +258,11 @@ class IcoAdminController extends Controller
         $data = $request->validate([
             'payment_index'    => 'required|integer|min:0',
             'symbol'           => 'required|string|max:20',
+            'name'             => 'nullable|string|max:100',
             'contract_address' => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
             'chain_type'       => 'required|string|in:eth,bnb,polygon',
+            'decimals'         => 'nullable|integer|min:0|max:36',
+            'price_usd'        => 'nullable|numeric|gte:0',
             'is_active'        => 'boolean',
         ]);
 
@@ -249,7 +280,10 @@ class IcoAdminController extends Controller
 
         $data = $request->validate([
             'symbol'           => 'sometimes|string|max:20',
+            'name'             => 'nullable|string|max:100',
             'contract_address' => 'nullable|string|regex:/^0x[0-9a-fA-F]{40}$/',
+            'decimals'         => 'nullable|integer|min:0|max:36',
+            'price_usd'        => 'nullable|numeric|gte:0',
             'is_active'        => 'sometimes|boolean',
         ]);
 
@@ -364,6 +398,9 @@ class IcoAdminController extends Controller
             'sale_type'        => $sale->sale_type->value,
             'status'           => $sale->status->value,
             'contract_address' => $sale->contract_address,
+            'owner_address'    => $sale->owner_address,
+            'signer_address'   => $sale->signer_address,
+            'has_signer_key'   => (bool) $sale->getRawOriginal('signer_private_key_enc'),
             'chain'            => $sale->chain_type->value,
             'token'            => $sale->token ? [
                 'id'     => $sale->token->id,
@@ -389,8 +426,11 @@ class IcoAdminController extends Controller
             'id'               => $pm->id,
             'payment_index'    => $pm->payment_index,
             'symbol'           => $pm->symbol,
+            'name'             => $pm->name ?? $pm->symbol,
             'contract_address' => $pm->contract_address,
             'chain'            => $pm->chain_type->value,
+            'decimals'         => $pm->decimals,
+            'price_usd'        => $pm->price_usd,
             'is_active'        => $pm->is_active,
             'is_native'        => $pm->isNative(),
         ];

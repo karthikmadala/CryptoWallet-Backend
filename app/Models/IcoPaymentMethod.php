@@ -17,8 +17,11 @@ class IcoPaymentMethod extends Model
         'ico_sale_id',
         'payment_index',
         'symbol',
+        'name',
         'contract_address',
         'chain_type',
+        'decimals',
+        'price_usd',
         'is_active',
     ];
 
@@ -28,6 +31,8 @@ class IcoPaymentMethod extends Model
             'chain_type'    => ChainType::class,
             'is_active'     => 'boolean',
             'payment_index' => 'integer',
+            'decimals'      => 'integer',
+            'price_usd'     => 'decimal:8',
         ];
     }
 

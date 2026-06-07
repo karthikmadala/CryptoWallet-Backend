@@ -38,6 +38,9 @@ class PermissionSeeder extends Seeder
             ['name' => 'ico.manage', 'label' => 'Manage ICO', 'description' => 'Manage ICO campaigns'],
             ['name' => 'ico.execute', 'label' => 'Execute ICO', 'description' => 'Execute ICO operations'],
 
+            ['name' => 'kyc.view', 'label' => 'View KYC', 'description' => 'View KYC requirements and submissions'],
+            ['name' => 'kyc.manage', 'label' => 'Manage KYC', 'description' => 'Manage KYC requirements and reviews'],
+
             ['name' => 'reports.view', 'label' => 'View Reports', 'description' => 'View reports and analytics'],
             ['name' => 'reports.export', 'label' => 'Export Reports', 'description' => 'Export reports to files'],
 
@@ -80,6 +83,7 @@ class PermissionSeeder extends Seeder
             'wallets.view',
             'transactions.view',
             'tokens.view',
+            'kyc.view',
             'reports.view',
         ])->pluck('id');
         $staff->permissions()->sync($staffPermissions);

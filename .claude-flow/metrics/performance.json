@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-04T14:00:16.599Z",
+  "mode": "headless",
+  "workerType": "optimize",
+  "model": "sonnet",
+  "durationMs": 4036,
+  "executionId": "optimize_1780581612563_8omlwp",
+  "success": false,
+  "findings": {
+    "sections": [],
+    "codeBlocks": []
+  },
+  "rawOutputPreview": "You've hit your session limit · resets 7:40pm (Asia/Calcutta)\n",
+  "rawOutputLength": 62
+}

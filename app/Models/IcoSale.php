@@ -22,6 +22,9 @@ class IcoSale extends Model
         'sale_type',
         'status',
         'contract_address',
+        'owner_address',
+        'signer_address',
+        'signer_private_key_enc',
         'chain_type',
         'token_price_usd',
         'total_allocation',
@@ -31,6 +34,8 @@ class IcoSale extends Model
         'starts_at',
         'ends_at',
     ];
+
+    protected $hidden = ['signer_private_key_enc'];
 
     protected function casts(): array
     {

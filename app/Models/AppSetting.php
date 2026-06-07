@@ -15,6 +15,9 @@ class AppSetting extends Model
         'application_logo_path',
         'fallback_logo_path',
         'selected_ico_token_id',
+        'payment_admin_wallet_address',
+        'payment_admin_wallet_connected',
+        'kyc_required',
     ];
 
     protected $hidden = [
@@ -26,6 +29,8 @@ class AppSetting extends Model
     {
         return [
             'application_logo_type' => LogoType::class,
+            'payment_admin_wallet_connected' => 'boolean',
+            'kyc_required'                  => 'boolean',
         ];
     }
 
